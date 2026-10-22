@@ -97,7 +97,7 @@ Telegram. Ключі — лише в GitHub Secrets, ніколи у фронт�
 ## 5. Статус
 
 - [x] Етап 0 — прототип
-- [ ] 1.1 Vitest і тести
+- [x] 1.1 Vitest і тести (37 тестів: `src/data/selectors.test.ts`, `src/data/store.test.ts`)
 - [ ] 1.2 CI на PR
 - [ ] 1.3 «Сьогодні» як параметр
 - [ ] 1.4 Міграції стану
