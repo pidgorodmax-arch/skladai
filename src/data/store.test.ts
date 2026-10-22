@@ -128,6 +128,17 @@ describe('orderStatus — статус замовлення', () => {
     expect(qtyOf(next, 'YB-1')).toBe(100) // інший продукт не чіпаємо
   })
 
+  it('«spedito» остаточний: статус не можна змінити назад', () => {
+    const state = makeState()
+    // O4 уже відвантажене
+    expect(reducer(state, { type: 'orderStatus', orderId: 'O4', status: 'nuovo' })).toBe(state)
+    expect(reducer(state, { type: 'orderStatus', orderId: 'O4', status: 'in_preparazione' })).toBe(state)
+
+    // Повний цикл: відвантажили O2 і спробували повернути в «nuovo» — склад і статус не змінюються
+    const shipped = reducer(state, { type: 'orderStatus', orderId: 'O2', status: 'spedito' })
+    expect(reducer(shipped, { type: 'orderStatus', orderId: 'O2', status: 'nuovo' })).toBe(shipped)
+  })
+
   it('«spedito» при нестачі списує все наявне, без від\'ємних залишків', () => {
     // O1 хоче 50 кг моцарели, а є лише 35.
     const next = reducer(makeState(), { type: 'orderStatus', orderId: 'O1', status: 'spedito' })

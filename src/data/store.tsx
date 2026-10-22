@@ -65,9 +65,11 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'orderStatus': {
       const order = state.orders.find((o) => o.id === action.orderId)
       if (!order || order.status === action.status) return state
+      // «Spedito» остаточний: товар уже списано. Повернення — окрема дія (reso, етап 5).
+      if (order.status === 'spedito') return state
       let lots = state.lots
       const log = [...state.log]
-      if (action.status === 'spedito' && order.status !== 'spedito') {
+      if (action.status === 'spedito') {
         // Списуємо зі складу за принципом FEFO: спершу те, що раніше спливає
         // (для Montasio — найстаріші форми).
         for (const line of order.lines) {
