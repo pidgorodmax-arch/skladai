@@ -20,7 +20,8 @@ function now(): string {
   return new Date().toISOString().slice(0, 16)
 }
 
-function reducer(state: AppState, action: Action): AppState {
+// Експортуємо для тестів: reducer — чиста функція (стан + дія → новий стан).
+export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'register': {
       const product = state.products.find((p) => p.id === action.productId)
