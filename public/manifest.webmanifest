@@ -1,0 +1,9 @@
+{
+  "name": "SkladAI",
+  "short_name": "SkladAI",
+  "start_url": "./#/registra",
+  "display": "standalone",
+  "background_color": "#f3f5f4",
+  "theme_color": "#17201b",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
