@@ -29,7 +29,9 @@ jobs:
         run: npm ci
       - name: Збірка (tsc + vite)
         run: npm run build
+      # -D correctness: помилки коректності (debugger, x === x, нечистий рендер…)
+      # валять перевірку, а не лише попереджають.
       - name: Лінтер
-        run: npx oxlint src
+        run: npm run lint
       - name: Тести
         run: npm test
