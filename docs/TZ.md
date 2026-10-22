@@ -32,7 +32,7 @@
 |---|---|---|
 | 1.1 | Додати Vitest; тести для `selectors.ts` (заповненість, вік, терміни, план виробництва) і для reducer у `store.tsx` (register, ship, move, orderStatus з FEFO) | `npm test` проходить; покрито всі дії reducer; тест на FEFO списання |
 | 1.2 | Workflow `ci.yml`: на кожен PR — `npm ci`, build, lint, test | PR із помилкою збірки показує червону перевірку |
-| 1.3 | Винести «сьогодні» з селекторів у параметр (для тестів і для агента) | Жоден селектор не викликає `new Date()` всередині |
+| 1.3 | Винести «сьогодні» з селекторів у параметр (для тестів і для агента). Прибрати `new Date()` з рендеру `Dashboard.tsx` і після цього посилити лінтер у `ci.yml`: `npx oxlint -D correctness src` (зараз oxlint лише попереджає й не валить перевірку) | Жоден селектор не викликає `new Date()` всередині; `npx oxlint -D correctness src` проходить |
 | 1.4 | Міграції стану: `version` у `AppState`, функція `migrate(old) → new`. Разом із цим винести `reducer` і `Action` зі `store.tsx` у `src/data/reducer.ts` (прибирає попередження лінтера `only-export-components`) | Старі дані з localStorage не ламають застосунок; `npx oxlint src` без попередження про `store.tsx` |
 
 ### Етап 2. Справжні дані (Google Sheets)
@@ -99,7 +99,7 @@ Telegram. Ключі — лише в GitHub Secrets, ніколи у фронт�
 
 - [x] Етап 0 — прототип
 - [x] 1.1 Vitest і тести (38 тестів: `src/data/selectors.test.ts`, `src/data/store.test.ts`)
-- [ ] 1.2 CI на PR
+- [x] 1.2 CI на PR (`.github/workflows/ci.yml`: build, lint, test)
 - [ ] 1.3 «Сьогодні» як параметр
 - [ ] 1.4 Міграції стану
 - [ ] 2.1 DataSource / DemoSource
