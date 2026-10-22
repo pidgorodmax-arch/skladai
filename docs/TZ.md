@@ -164,8 +164,8 @@ Telegram. Ключі — лише в GitHub Secrets, ніколи у фронт�
 - [x] Етап 0 — прототип
 - [x] 1.1 Vitest і тести (38 тестів: `src/data/selectors.test.ts`, `src/data/store.test.ts`)
 - [x] 1.2 CI на PR (`.github/workflows/ci.yml`: build, lint, test)
-- [ ] 1.3 «Сьогодні» як параметр
-- [ ] 1.4 Міграції стану
+- [x] 1.3 «Сьогодні» як параметр (`today` у селекторах, `useToday`; суворий лінтер у CI)
+- [x] 1.4 Міграції стану (`migrate.ts`, `persist.ts` з резервною копією; `reducer.ts` окремо)
 - [ ] 2.1 DataSource / DemoSource
 - [ ] 2.2 Структура таблиці
 - [ ] 2.3 Apps Script
