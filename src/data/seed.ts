@@ -1,7 +1,7 @@
 // Демо-дані для невеликої сироварні у Фріулі. Дати рахуються відносно
 // сьогоднішнього дня, тому демо завжди виглядає «свіжим».
 
-import type { AppState, Lot, Product } from './types'
+import { STATE_VERSION, type AppState, type Lot, type Product } from './types'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -77,7 +77,7 @@ export function createSeed(): AppState {
   add('ricotta', 8, 'C2-2', 2)
 
   return {
-    version: 1,
+    version: STATE_VERSION,
     products,
     zones: [
       { id: 'stag', name: 'Stagionatura', temperature: '12,5 °C · 85% UR', x: 0, z: 0, w: 14, d: 10 },

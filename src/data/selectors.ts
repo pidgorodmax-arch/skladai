@@ -1,21 +1,29 @@
 // Розрахунки, спільні для всіх екранів. Чисті функції: отримують стан —
 // повертають цифри. Їх же читатиме AI-агент.
+// «Сьогодні» приходить параметром `today` (північ за UTC, див. startOfDay):
+// селектори ніколи не дивляться на годинник самі, тож тест чи агент можуть
+// порахувати склад на будь-яку дату.
 
 import type { AppState, Location, Lot, Product } from './types'
 
 const DAY = 24 * 60 * 60 * 1000
 
-export function today(): Date {
-  const d = new Date()
-  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+/** Календарний день моменту `now` за місцевим часом → північ цього дня за UTC. */
+export function startOfDay(now: Date): Date {
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
 }
 
-export function daysBetween(fromIso: string, to: Date = today()): number {
+/** Дата `today` як рядок ISO «РРРР-ММ-ДД». */
+export function isoDate(today: Date): string {
+  return today.toISOString().slice(0, 10)
+}
+
+export function daysBetween(fromIso: string, to: Date): number {
   return Math.round((to.getTime() - new Date(fromIso + 'T00:00:00Z').getTime()) / DAY)
 }
 
-export function daysUntil(iso: string): number {
-  return -daysBetween(iso)
+export function daysUntil(iso: string, today: Date): number {
+  return -daysBetween(iso, today)
 }
 
 export function fmtDate(iso: string): string {
@@ -59,18 +67,18 @@ export function occupancy(state: AppState, loc: Location): number {
 }
 
 /** Середній вік (днів) Montasio на стелажі, зважений за кількістю форм. */
-export function avgAgeDays(state: AppState, locationId: string): number | null {
+export function avgAgeDays(state: AppState, locationId: string, today: Date): number | null {
   const lots = lotsAt(state, locationId)
   const total = lots.reduce((s, l) => s + l.qty, 0)
   if (!total) return null
-  return Math.round(lots.reduce((s, l) => s + l.qty * daysBetween(l.producedAt), 0) / total)
+  return Math.round(lots.reduce((s, l) => s + l.qty * daysBetween(l.producedAt, today), 0) / total)
 }
 
 /** Найближчий термін придатності на місці зберігання (днів), або null. */
-export function firstExpiryDays(state: AppState, locationId: string): number | null {
+export function firstExpiryDays(state: AppState, locationId: string, today: Date): number | null {
   const days = lotsAt(state, locationId)
     .filter((l) => l.expiresAt)
-    .map((l) => daysUntil(l.expiresAt!))
+    .map((l) => daysUntil(l.expiresAt!, today))
   return days.length ? Math.min(...days) : null
 }
 
@@ -80,9 +88,9 @@ export function stockByProduct(state: AppState): Record<string, number> {
   return out
 }
 
-export function openOrders(state: AppState, withinDays = 7) {
+export function openOrders(state: AppState, today: Date, withinDays = 7) {
   return state.orders
-    .filter((o) => o.status !== 'spedito' && daysUntil(o.due) <= withinDays)
+    .filter((o) => o.status !== 'spedito' && daysUntil(o.due, today) <= withinDays)
     .sort((a, b) => a.due.localeCompare(b.due))
 }
 
@@ -95,11 +103,11 @@ export interface PlanRow {
 }
 
 /** Що виробити: підтверджені замовлення на 7 днів мінус склад. */
-export function productionPlan(state: AppState): PlanRow[] {
+export function productionPlan(state: AppState, today: Date): PlanRow[] {
   const stock = stockByProduct(state)
   const ordered: Record<string, number> = {}
   const firstDue: Record<string, string> = {}
-  for (const o of openOrders(state)) {
+  for (const o of openOrders(state, today)) {
     for (const line of o.lines) {
       ordered[line.productId] = (ordered[line.productId] ?? 0) + line.qty
       if (!firstDue[line.productId] || o.due < firstDue[line.productId]) firstDue[line.productId] = o.due
@@ -117,9 +125,9 @@ export function productionPlan(state: AppState): PlanRow[] {
     .sort((a, b) => b.todo - a.todo)
 }
 
-export function expiringLots(state: AppState, withinDays = 7) {
+export function expiringLots(state: AppState, today: Date, withinDays = 7) {
   return state.lots
-    .filter((l) => l.expiresAt && daysUntil(l.expiresAt) <= withinDays)
+    .filter((l) => l.expiresAt && daysUntil(l.expiresAt, today) <= withinDays)
     .sort((a, b) => (a.expiresAt ?? '').localeCompare(b.expiresAt ?? ''))
 }
 
@@ -128,11 +136,11 @@ export function stockValue(state: AppState): number {
   return state.lots.reduce((s, l) => s + l.qty * (pm[l.productId]?.pricePerUnit ?? 0), 0)
 }
 
-export function agingSummary(state: AppState) {
+export function agingSummary(state: AppState, today: Date) {
   const out: Record<AgeClass, number> = { fresco: 0, mezzano: 0, stagionato: 0 }
   for (const l of state.lots) {
     if (l.productId !== 'montasio') continue
-    out[ageClass(daysBetween(l.producedAt))] += l.qty
+    out[ageClass(daysBetween(l.producedAt, today))] += l.qty
   }
   return out
 }

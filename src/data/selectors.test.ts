@@ -1,7 +1,7 @@
-// Тести розрахунків. Селектори поки беруть «сьогодні» з годинника
-// (див. завдання 1.3), тому тут ми «заморожуємо» час на TEST_NOW.
+// Тести розрахунків. Селектори отримують «сьогодні» параметром (T), тому
+// годинник «заморожувати» не треба: результат залежить лише від даних і дати.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   ageClass,
   agingSummary,
@@ -10,39 +10,39 @@ import {
   daysUntil,
   expiringLots,
   firstExpiryDays,
+  isoDate,
   occupancy,
   openOrders,
   orderCoverage,
   productionPlan,
+  startOfDay,
   stockByProduct,
   stockValue,
   usedSpace,
 } from './selectors'
-import { TEST_NOW, makeState } from './testState'
-
-beforeEach(() => {
-  vi.useFakeTimers()
-  vi.setSystemTime(TEST_NOW)
-})
-
-afterEach(() => {
-  vi.useRealTimers()
-})
+import { TEST_TODAY as T, makeState } from './testState'
 
 function loc(id: string) {
   return makeState().locations.find((l) => l.id === id)!
 }
 
 describe('дати', () => {
+  it('startOfDay бере місцевий календарний день і повертає північ за UTC', () => {
+    // 23:30 і 00:30 одного місцевого дня → той самий день
+    expect(startOfDay(new Date(2026, 5, 15, 0, 30))).toEqual(T)
+    expect(startOfDay(new Date(2026, 5, 15, 23, 30))).toEqual(T)
+    expect(isoDate(T)).toBe('2026-06-15')
+  })
+
   it('daysBetween рахує дні від дати до сьогодні', () => {
-    expect(daysBetween('2026-06-15')).toBe(0)
-    expect(daysBetween('2026-06-05')).toBe(10)
+    expect(daysBetween('2026-06-15', T)).toBe(0)
+    expect(daysBetween('2026-06-05', T)).toBe(10)
     expect(daysBetween('2026-06-01', new Date('2026-06-11T00:00:00Z'))).toBe(10)
   })
 
   it('daysUntil рахує дні до дати (мінус — уже минула)', () => {
-    expect(daysUntil('2026-06-19')).toBe(4)
-    expect(daysUntil('2026-06-14')).toBe(-1)
+    expect(daysUntil('2026-06-19', T)).toBe(4)
+    expect(daysUntil('2026-06-14', T)).toBe(-1)
   })
 })
 
@@ -80,36 +80,41 @@ describe('вік форм (витримка Montasio)', () => {
 
   it('avgAgeDays зважує вік за кількістю форм', () => {
     // (30 × 365 + 10 × 30) / 40 = 281,25 → 281
-    expect(avgAgeDays(makeState(), 'A')).toBe(281)
+    expect(avgAgeDays(makeState(), 'A', T)).toBe(281)
   })
 
   it('avgAgeDays для порожнього стелажа — null', () => {
-    expect(avgAgeDays(makeState(), 'B')).toBeNull()
+    expect(avgAgeDays(makeState(), 'B', T)).toBeNull()
   })
 
   it('agingSummary рахує лише форми Montasio за класами', () => {
-    expect(agingSummary(makeState())).toEqual({ fresco: 10, mezzano: 0, stagionato: 30 })
+    expect(agingSummary(makeState(), T)).toEqual({ fresco: 10, mezzano: 0, stagionato: 30 })
+  })
+
+  it('та сама партія на іншу дату — інший клас витримки (дата — параметр)', () => {
+    // Через 120 днів форми MO-NEW (30 днів) стануть mezzano
+    expect(agingSummary(makeState(), new Date('2026-10-13T00:00:00Z'))).toEqual({ fresco: 0, mezzano: 10, stagionato: 30 })
   })
 })
 
 describe('терміни придатності', () => {
   it('firstExpiryDays — найближчий термін на місці', () => {
-    expect(firstExpiryDays(makeState(), 'C')).toBe(4)
+    expect(firstExpiryDays(makeState(), 'C', T)).toBe(4)
   })
 
   it('firstExpiryDays — null, якщо на місці лише витримка без терміну', () => {
-    expect(firstExpiryDays(makeState(), 'A')).toBeNull()
+    expect(firstExpiryDays(makeState(), 'A', T)).toBeNull()
   })
 
   it('expiringLots: межа включно, сортування від найближчого', () => {
-    expect(expiringLots(makeState()).map((l) => l.id)).toEqual(['MZ-1', 'MZ-2', 'YB-1'])
-    expect(expiringLots(makeState(), 5).map((l) => l.id)).toEqual(['MZ-1'])
+    expect(expiringLots(makeState(), T).map((l) => l.id)).toEqual(['MZ-1', 'MZ-2', 'YB-1'])
+    expect(expiringLots(makeState(), T, 5).map((l) => l.id)).toEqual(['MZ-1'])
   })
 
   it('expiringLots показує й прострочені партії', () => {
     const state = makeState()
     state.lots.push({ id: 'OLD', productId: 'mozzarella', qty: 1, locationId: 'C', producedAt: '2026-06-01', expiresAt: '2026-06-08' })
-    expect(expiringLots(state)[0].id).toBe('OLD')
+    expect(expiringLots(state, T)[0].id).toBe('OLD')
   })
 })
 
@@ -124,8 +129,8 @@ describe('склад і замовлення', () => {
   })
 
   it('openOrders: без відвантажених і далеких, від найтерміновішого', () => {
-    expect(openOrders(makeState()).map((o) => o.id)).toEqual(['O2', 'O1', 'O5'])
-    expect(openOrders(makeState(), 30).map((o) => o.id)).toEqual(['O2', 'O1', 'O5', 'O3'])
+    expect(openOrders(makeState(), T).map((o) => o.id)).toEqual(['O2', 'O1', 'O5'])
+    expect(openOrders(makeState(), T, 30).map((o) => o.id)).toEqual(['O2', 'O1', 'O5', 'O3'])
   })
 
   it('orderCoverage: чи вистачає складу на замовлення', () => {
@@ -138,7 +143,7 @@ describe('склад і замовлення', () => {
 
 describe('план виробництва', () => {
   it('замовлено на 7 днів мінус склад, найбільший дефіцит першим', () => {
-    const plan = productionPlan(makeState())
+    const plan = productionPlan(makeState(), T)
     expect(plan.map((r) => ({ id: r.product.id, ordered: r.ordered, stock: r.stock, todo: r.todo, firstDue: r.firstDue }))).toEqual([
       // O1 50 + O2 10 + O5 25 = 85, на складі 35
       { id: 'mozzarella', ordered: 85, stock: 35, todo: 50, firstDue: '2026-06-16' },
@@ -148,12 +153,12 @@ describe('план виробництва', () => {
   })
 
   it('не включає продукти без замовлень на 7 днів (йогурт — лише в далекому O3)', () => {
-    expect(productionPlan(makeState()).some((r) => r.product.id === 'yogurt')).toBe(false)
+    expect(productionPlan(makeState(), T).some((r) => r.product.id === 'yogurt')).toBe(false)
   })
 
   it('без відкритих замовлень план порожній', () => {
     const state = makeState()
     state.orders = []
-    expect(productionPlan(state)).toEqual([])
+    expect(productionPlan(state, T)).toEqual([])
   })
 })

@@ -19,20 +19,20 @@ export interface BriefItem {
   locationId?: string
 }
 
-export function morningBrief(state: AppState): BriefItem[] {
+export function morningBrief(state: AppState, today: Date): BriefItem[] {
   const out: BriefItem[] = []
   const pm = productMap(state)
 
-  for (const row of productionPlan(state)) {
+  for (const row of productionPlan(state, today)) {
     if (row.todo <= 0) continue
     const when = row.firstDue ? ` entro ${fmtDate(row.firstDue)}` : ''
     out.push({
-      level: daysUntil(row.firstDue ?? '9999-12-31') <= 2 ? 'alert' : 'warn',
+      level: daysUntil(row.firstDue ?? '9999-12-31', today) <= 2 ? 'alert' : 'warn',
       text: `${row.product.name}: ordinati ${fmtNum(row.ordered)} ${row.product.unit}, in magazzino ${fmtNum(row.stock)}. Da produrre ${fmtNum(row.todo)} ${row.product.unit}${when}.`,
     })
   }
 
-  const expiring = expiringLots(state, 3)
+  const expiring = expiringLots(state, today, 3)
   if (expiring.length) {
     const byProduct = new Map<string, number>()
     for (const l of expiring) byProduct.set(l.productId, (byProduct.get(l.productId) ?? 0) + l.qty)

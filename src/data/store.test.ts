@@ -2,7 +2,7 @@
 // а некоректна дія повертає той самий стан без змін.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { reducer } from './store'
+import { reducer } from './reducer'
 import { TEST_NOW, makeState } from './testState'
 import type { AppState } from './types'
 

@@ -76,8 +76,14 @@ export interface Order {
   status: OrderStatus
 }
 
+/**
+ * Версія формату даних. Збільшуй її, коли змінюєш AppState так, що старі
+ * збережені дані вже не підходять, і додай крок у MIGRATIONS (migrate.ts).
+ */
+export const STATE_VERSION = 1
+
 export interface AppState {
-  version: 1
+  version: typeof STATE_VERSION
   products: Product[]
   zones: Zone[]
   locations: Location[]
