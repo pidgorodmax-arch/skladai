@@ -1,0 +1,35 @@
+name: Перевірка PR
+
+# Запускається на кожен Pull Request (і на кожен новий push у нього).
+# Якщо будь-який крок падає — PR отримує червоний хрестик.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Новий push у той самий PR скасовує попередню, вже неактуальну перевірку.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: build · lint · test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Встановити залежності
+        run: npm ci
+      - name: Збірка (tsc + vite)
+        run: npm run build
+      - name: Лінтер
+        run: npx oxlint src
+      - name: Тести
+        run: npm test
