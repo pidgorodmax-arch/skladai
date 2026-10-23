@@ -209,7 +209,7 @@ function SyncBar({ sync, onFresh }: { sync: SyncControl; onFresh: (state: AppSta
             {pending > 0 ? (
               <>
                 <strong>{pending === 1 ? '1 operazione non sincronizzata' : `${pending} operazioni non sincronizzate`}</strong>
-                {offline ? ' · senza connessione, salvate sul telefono' : syncing ? ' · invio in corso…' : ''}
+                {offline ? ` · senza connessione, ${pending === 1 ? 'salvata' : 'salvate'} sul telefono` : syncing ? ' · invio in corso…' : ''}
               </>
             ) : (
               <strong>Senza connessione: dati dell'ultima sincronizzazione</strong>
