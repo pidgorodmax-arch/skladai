@@ -1,0 +1,115 @@
+# Apps Script: Google Таблиця → API для SkladAI
+
+`Code.gs` перетворює Google Таблицю клієнта на маленький API (Web App):
+
+- **GET** — віддає всі вкладки одним JSON у форматі застосунку;
+- **POST** — застосовує одну дію (нова партія, переміщення, списання, статус
+  замовлення) і пише рядок у `Registro`.
+
+Структура таблиці — [`docs/sheets.md`](../docs/sheets.md). Спершу створи
+таблицю за ним, потім розгортай скрипт.
+
+> **Репозиторій публічний.** Адресу Web App і токен не пиши в код, у
+> коміти, в issues чи PR. Вони живуть лише у властивостях скрипта й у
+> налаштуваннях застосунку на телефоні (завдання 2.4).
+
+## Розгортання (≈10 хвилин, один раз)
+
+1. **Часовий пояс таблиці.** У таблиці: **File → Impostazioni → Fuso
+   orario → (GMT+01:00) Roma** → Salva.
+2. **Відкрий редактор скрипта:** **Estensioni → Apps Script**. Відкриється
+   новий проєкт, прив'язаний саме до цієї таблиці.
+3. **Код.** У файлі `Codice.gs` видали все й встав вміст
+   [`apps-script/Code.gs`](Code.gs). Натисни 💾 (Salva progetto).
+4. **Маніфест.** Ліворуч ⚙️ **Impostazioni progetto** → увімкни
+   «Mostra il file manifest "appsscript.json" nell'editor». Повернись у
+   редактор (`<>`), відкрий `appsscript.json` і заміни вміст на
+   [`apps-script/appsscript.json`](appsscript.json). Там пояс `Europe/Rome`
+   і налаштування Web App. Збережи.
+5. **Токен (пароль для API).** ⚙️ **Impostazioni progetto → Proprietà
+   script → Aggiungi proprietà script**: назва `TOKEN`, значення — довгий
+   випадковий рядок (≥ 32 символи, наприклад з менеджера паролів або
+   `openssl rand -hex 24`). Salva. Без нього скрипт відповідає
+   `TOKEN non configurato…`.
+6. **Опублікуй як Web App:** угорі **Esegui il deployment → Nuovo
+   deployment** → ⚙️ біля «Seleziona tipo» → **App web**:
+   - *Descrizione*: `SkladAI v1`
+   - *Esegui come*: **Me** (скрипт пише в таблицю від твого імені)
+   - *Chi ha accesso*: **Chiunque** (застосунок на телефоні без входу в
+     Google; захист — токен)
+
+   → **Esegui il deployment**.
+7. **Дозволи.** Google попросить доступ до таблиць: **Autorizza accesso**
+   → обери свій акаунт. Якщо з'явиться «Google non ha verificato
+   quest'app» — це нормально для власного скрипта: **Avanzate → Vai a … (non
+   sicuro)** → **Consenti**.
+8. **Скопіюй URL Web App** (закінчується на `/exec`). Він знадобиться для
+   перевірки нижче й у налаштуваннях застосунку (2.4).
+
+### Оновлення скрипта
+
+Після зміни коду: **Esegui il deployment → Gestisci deployment** → ✏️ →
+*Versione*: **Nuova versione** → **Esegui il deployment**. URL лишається
+той самий. (Якщо створити *новий* deployment — URL зміниться.)
+
+## Ручна перевірка з curl
+
+Підстав свої значення (у терміналі; на Windows — Git Bash):
+
+```bash
+URL='https://script.google.com/macros/s/…/exec'
+TOKEN='твій-токен'
+```
+
+**1. Прочитати всю таблицю:**
+
+```bash
+curl -sL "$URL?token=$TOKEN"
+```
+
+Очікувано: `{"ok":true,"state":{"version":2,"products":[…],"zones":[…],…}}`.
+`-L` обов'язковий: Google спершу відповідає переадресацією.
+
+**2. Записати нову партію** (заміни `mozzarella` і `C2-1` на `id` зі своїх
+вкладок `Prodotti` і `Posizioni`):
+
+```bash
+curl -sL -H 'Content-Type: text/plain' \
+  -d '{"token":"'"$TOKEN"'","action":{"type":"register","productId":"mozzarella","qty":10,"locationId":"C2-1"}}' \
+  "$URL"
+```
+
+Очікувано: `{"ok":true}`; у вкладці `Lotti` — новий рядок (`L-ДДММ-MZ`), у
+`Registro` — запис «Prodotto lotto …» з часом за Римом.
+
+**3. Помилки** повертаються як `{"ok":false,"error":"…"}` (італійською), а
+таблиця не змінюється:
+
+```bash
+curl -sL "$URL?token=sbagliato"
+# {"ok":false,"error":"Token non valido"}
+```
+
+## Дії (тіло POST)
+
+Тіло — JSON `{"token": "…", "action": {…}}`. Дії ті самі, що в застосунку
+(`src/data/reducer.ts`):
+
+| `type` | Поля | Що робить у таблиці |
+|---|---|---|
+| `register` | `productId`, `qty`, `locationId`, `milkLitres?` | Новий рядок у `Lotti`: код лоту із сигли продукту, дата за Римом, термін = дата + `giorni_scadenza` |
+| `move` | `lotId`, `locationId` | Міняє `posizione` партії |
+| `ship` | `lotId`, `qty` | Зменшує `quantita`; на 0 — видаляє рядок |
+| `orderStatus` | `orderId`, `status` (`nuovo` / `in_preparazione` / `spedito`) | Міняє `stato` в усіх рядках замовлення; `spedito` списує `Lotti` за FEFO і остаточний |
+
+Кожна дія, крім зміни статусу без відвантаження, дописує рядок у
+`Registro`. Одночасні записи з кількох телефонів виконуються по черзі
+(`LockService`).
+
+## Як перевіряється без Google
+
+`src/data/appsScript.test.ts` запускає `Code.gs` на фальшивій таблиці (у
+пам'яті) і проганяє ті самі дії через reducer застосунку і через скрипт:
+результат має збігатися крок за кроком. Там же перевірено, що колонки в
+скрипті збігаються з `docs/sheets.md`. Тож якщо змінити правило в одному
+місці й забути в іншому — `npm test` упаде.

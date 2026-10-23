@@ -60,6 +60,13 @@ src/
 Дані зараз зберігаються в браузері (localStorage) — кнопка «Ripristina dati
 demo» внизу повертає демо.
 
+## Google Таблиця (Apps Script)
+
+Справжні дані клієнта живуть у його Google Таблиці (структура —
+`docs/sheets.md`). Скрипт `apps-script/Code.gs`, розгорнутий як Web App,
+віддає таблицю застосунку й записує в неї дії. Як розгорнути й перевірити
+через curl — `apps-script/README.md`.
+
 ## Робота з Claude Code
 
 Правила для Claude Code — у `CLAUDE.md`, технічне завдання й етапи — у
