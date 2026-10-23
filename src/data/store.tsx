@@ -184,7 +184,10 @@ function SyncBar({ sync, onFresh }: { sync: SyncControl; onFresh: (state: AppSta
     const onVisible = () => document.visibilityState === 'visible' && retry()
     window.addEventListener('online', retry)
     document.addEventListener('visibilitychange', onVisible)
-    const timer = setInterval(() => sync.status().pending > 0 && retry(), RETRY_MS)
+    const timer = setInterval(() => {
+      const { pending, offline } = sync.status()
+      if (pending > 0 || offline) retry()
+    }, RETRY_MS)
     return () => {
       window.removeEventListener('online', retry)
       document.removeEventListener('visibilitychange', onVisible)

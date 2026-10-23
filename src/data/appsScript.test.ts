@@ -135,10 +135,14 @@ describe('Apps Script: doPost дає той самий результат, що 
     expect(get(script).state.lots.find((l: { id: string }) => l.id === 'YB-1').qty).toBe(80)
   })
 
-  it('некоректний at ігнорується — береться поточний час', () => {
+  it('некоректний at або at з майбутнього (збитий годинник) ігнорується — береться поточний час', () => {
     const { script } = setup()
     post(script, { type: 'move', lotId: 'MZ-1', locationId: 'A', at: 'ieri sera' })
     expect(get(script).state.log.at(-1).at).toBe('2026-06-15T14:00')
+    post(script, { type: 'move', lotId: 'MZ-1', locationId: 'B', at: '2026-06-15T14:30' })
+    expect(get(script).state.log.at(-1).at).toBe('2026-06-15T14:00')
+    post(script, { type: 'move', lotId: 'MZ-1', locationId: 'A', at: '2026-06-15T14:05' }) // кілька хвилин — норма
+    expect(get(script).state.log.at(-1).at).toBe('2026-06-15T14:05')
   })
 
   it('«spedito» остаточний: повернути статус не можна, таблиця не змінюється', () => {

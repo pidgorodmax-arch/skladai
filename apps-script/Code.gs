@@ -281,8 +281,12 @@ function writeLog(t, at, text) {
  * журналі вечірньою. Без `at` — поточний час.
  */
 function actionTime(at) {
-  if (typeof at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at)) return at
-  return formatRome(new Date(), "yyyy-MM-dd'T'HH:mm")
+  var now = formatRome(new Date(), "yyyy-MM-dd'T'HH:mm")
+  // Годинник телефона збитий і показує майбутнє (більше ніж на 10 хв) —
+  // такому часу в журналі HACCP не довіряємо, пишемо час отримання.
+  var limit = formatRome(new Date(Date.now() + 10 * 60000), "yyyy-MM-dd'T'HH:mm")
+  if (typeof at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at) && at <= limit) return at
+  return now
 }
 
 function findRow(table, id) {

@@ -11,7 +11,8 @@
 //              тож застосунок відкривається й офлайн.
 //
 // Що робити з помилкою відправки:
-//   network / error  — лишаємо дію в черзі, повторимо пізніше;
+//   network / error  — лишаємо дію в черзі, повторимо пізніше (error —
+//                      таблиця зайнята: показуємо це окремо від «немає мережі»);
 //   auth / config    — лишаємо дію, показуємо причину (треба виправити токен
 //                      чи таблицю), повторимо пізніше;
 //   rejected         — таблиця відхилила саму дію: прибираємо її з черги й
@@ -91,8 +92,21 @@ function retryable(err: unknown): boolean {
   return !(err instanceof SheetsError) || err.code !== 'rejected'
 }
 
+/** Немає зв'язку з Google. */
 function isNetwork(err: unknown): boolean {
+  return err instanceof SheetsError && err.code === 'network'
+}
+
+/** Таблиця тимчасово недоступна (зв'язку немає чи вона зайнята) — можна стартувати з копії. */
+function isTemporary(err: unknown): boolean {
   return err instanceof SheetsError && (err.code === 'network' || err.code === 'error')
+}
+
+/** Що показати людині, якщо дію треба буде повторити. */
+function retryMessage(err: unknown): string | null {
+  if (isNetwork(err)) return null // це покаже позначка «senza connessione»
+  if (err instanceof SheetsError && err.code === 'error') return `Tabella occupata, nuovo tentativo a breve (${err.message})`
+  return errorMessage(err)
 }
 
 /**
@@ -130,9 +144,27 @@ export function createQueuedSource(inner: DataSource, owner: string, storage: Ke
     return queue.reduce(reducer, state)
   }
 
+  /** Перечитує таблицю: копія для офлайн-старту + свіжий стан для екрана. */
+  async function refresh(): Promise<void> {
+    try {
+      const fresh = await inner.load()
+      write(storage, CACHE_KEY, owner, fresh)
+      setStatus({ offline: false })
+      const state = withPending(fresh)
+      freshListeners.forEach((l) => l(state))
+    } catch (err) {
+      // Не страшно: дії вже в таблиці, екран оновиться наступного разу.
+      if (isNetwork(err)) setStatus({ offline: true })
+    }
+  }
+
   async function drain(): Promise<void> {
+    if (!queue.length && !status.offline) return
     setStatus({ syncing: true })
     try {
+      // Відкрились без мережі й нічого не чекає відправки — лише перевіряємо,
+      // чи повернувся зв'язок, і підтягуємо свіжі дані.
+      if (!queue.length) await refresh()
       // Цикл, бо поки відправляємо чи читаємо таблицю, можуть з'явитися нові дії.
       while (queue.length) {
         while (queue.length) {
@@ -141,7 +173,7 @@ export function createQueuedSource(inner: DataSource, owner: string, storage: Ke
             await inner.apply(action)
           } catch (err) {
             if (retryable(err)) {
-              if (!isNetwork(err)) problem = errorMessage(err)
+              problem = retryMessage(err)
               setStatus({ offline: isNetwork(err) })
               return
             }
@@ -154,14 +186,7 @@ export function createQueuedSource(inner: DataSource, owner: string, storage: Ke
           setStatus({ offline: false })
         }
         // Усе відправлено: перечитуємо таблицю, щоб екран збігся з нею.
-        try {
-          const fresh = await inner.load()
-          write(storage, CACHE_KEY, owner, fresh)
-          const state = withPending(fresh)
-          freshListeners.forEach((l) => l(state))
-        } catch {
-          // Не страшно: дії вже в таблиці, екран оновиться наступного разу.
-        }
+        await refresh()
       }
     } finally {
       setStatus({ syncing: false })
@@ -183,7 +208,7 @@ export function createQueuedSource(inner: DataSource, owner: string, storage: Ke
         setStatus({ offline: false })
         return withPending(fresh)
       } catch (err) {
-        const cached = isNetwork(err) ? migrate(read<unknown>(storage, CACHE_KEY, owner)) : null
+        const cached = isTemporary(err) ? migrate(read<unknown>(storage, CACHE_KEY, owner)) : null
         if (!cached) throw err
         setStatus({ offline: true })
         return withPending(cached)

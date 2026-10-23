@@ -116,6 +116,50 @@ describe('офлайн-черга', () => {
     expect(sheets.Registro.values.at(-1)![1]).toBe('Uscita 30 dal lotto YB-1')
   })
 
+  it('відкрили без мережі з порожньою чергою → мережа повернулась → позначка зникає, дані свіжі', async () => {
+    const { sheets, net, fetchFn } = fakeGoogle()
+    const storage = memoryStorage()
+    await makeSource(fetchFn, storage).load() // копія таблиці є
+    net.online = false
+    const source = makeSource(fetchFn, storage)
+    await source.load()
+    expect(source.sync.status()).toMatchObject({ pending: 0, offline: true })
+    const seen: AppState[] = []
+    source.sync.onFreshState((s) => seen.push(s))
+    // Поки телефон був офлайн, у таблиці змінили кількість.
+    sheets.Lotti.values[1][COLUMNS.Lotti.findIndex((c) => c[0] === 'quantita')] = 4
+    await source.sync.flush()
+    expect(source.sync.status().offline).toBe(true) // мережі ще немає
+    net.online = true
+    await source.sync.flush()
+    expect(source.sync.status()).toMatchObject({ pending: 0, offline: false })
+    expect(seen.at(-1)!.lots[0].qty).toBe(4)
+  })
+
+  it('онлайн без черги flush нічого не відправляє й не читає', async () => {
+    const { net, fetchFn } = fakeGoogle()
+    let calls = 0
+    const counting: FetchLike = (u, i) => (calls++, fetchFn(u, i))
+    const source = makeSource(counting, memoryStorage())
+    await source.load()
+    calls = 0
+    await source.sync.flush()
+    expect(calls).toBe(0)
+    expect(net.posts).toBe(0)
+  })
+
+  it('таблиця зайнята (error) — не «немає мережі», а окреме повідомлення; дія чекає', async () => {
+    const busy: FetchLike = async (_u, init) => ({
+      ok: true,
+      status: 200,
+      json: async () => (init?.method === 'POST' ? { ok: false, error: 'Lock timeout', code: 'error' } : {}),
+    })
+    const source = makeSource(busy, memoryStorage())
+    await source.apply(stamp({ type: 'ship', lotId: 'YB-1', qty: 1 }))
+    await source.sync.flush()
+    expect(source.sync.status()).toMatchObject({ pending: 1, offline: false, error: 'Tabella occupata, nuovo tentativo a breve (Lock timeout)' })
+  })
+
   it('без мережі й без копії (перший запуск) — помилка, а не порожній склад', async () => {
     const { net, fetchFn } = fakeGoogle()
     net.online = false
