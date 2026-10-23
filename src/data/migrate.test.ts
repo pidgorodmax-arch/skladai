@@ -135,13 +135,16 @@ describe('v3 → v4: коробки (2b.1)', () => {
     expect(migrated).toEqual(makeState())
   })
 
-  it('партія з нульовою чи зіпсованою кількістю не дає коробки', () => {
+  it('партія з нульовою чи зіпсованою кількістю або без стелажа не дає коробки і зникає', () => {
     const old = v3State()
     const lots = old.lots as Record<string, unknown>[]
     lots[0] = { ...lots[0], qty: 0 }
     lots[1] = { ...lots[1], qty: 'molto' }
+    const { locationId: _l, ...noPlace } = lots[2]
+    lots[2] = noPlace
     const migrated = migrate(old)!
-    expect(migrated.boxes.map((b) => b.lotId)).toEqual(['MZ-2', 'MZ-1', 'YB-1'])
+    expect(migrated.boxes.map((b) => b.lotId)).toEqual(['MZ-1', 'YB-1'])
+    expect(migrated.lots.map((l) => l.id)).toEqual(['MZ-1', 'YB-1'])
   })
 
   it('без списку партій — null, а не падіння', () => {

@@ -55,17 +55,21 @@ export const MIGRATIONS: Record<number, Migration> = {
   // партія стає однією коробкою `<id>-1` з тією ж кількістю на тому ж
   // стелажі; у самій партії ці поля прибираємо. Збирань (picks) ще не було.
   // Цей же крок перетворює дані з Google Таблиці: Apps Script поки віддає v3.
+  // Партія без кількості чи без стелажа коробки не отримує і зникає — як
+  // партія з нулем у reducer (без коробок її однаково ніде не видно).
   3: (old) => {
-    const lots = Array.isArray(old.lots) ? old.lots : []
+    if (!Array.isArray(old.lots)) return { ...old, version: 4, boxes: [], picks: [] }
     const boxes: Box[] = []
-    const cleaned = lots.map((l: unknown) => {
-      if (!isRecord(l)) return l
+    const lots = old.lots.flatMap((l: unknown) => {
+      if (!isRecord(l)) return [l]
       const { qty, locationId, ...lot } = l
       const amount = Number(qty)
-      if (amount > 0) boxes.push({ id: firstBoxId(String(lot.id ?? '')), lotId: String(lot.id ?? ''), locationId: String(locationId ?? ''), qty: amount })
-      return lot
+      if (!(amount > 0) || typeof locationId !== 'string' || !locationId) return []
+      const lotId = String(lot.id ?? '')
+      boxes.push({ id: firstBoxId(lotId), lotId, locationId, qty: amount })
+      return [lot]
     })
-    return { ...old, version: 4, lots: Array.isArray(old.lots) ? cleaned : old.lots, boxes, picks: [] }
+    return { ...old, version: 4, lots, boxes, picks: [] }
   },
 }
 
