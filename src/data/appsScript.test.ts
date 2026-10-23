@@ -43,8 +43,8 @@ describe('Apps Script: doGet', () => {
 
   it('без правильного токена — помилка, а не дані', () => {
     const { script } = setup()
-    expect(get(script, 'sbagliato')).toEqual({ ok: false, error: 'Token non valido' })
-    expect(get(loadScript(toSheets(makeState(), COLUMNS), null))).toMatchObject({ ok: false })
+    expect(get(script, 'sbagliato')).toEqual({ ok: false, error: 'Token non valido', code: 'auth' })
+    expect(get(loadScript(toSheets(makeState(), COLUMNS), null))).toMatchObject({ ok: false, code: 'auth' })
   })
 
   it('порядок колонок неважливий, порожні рядки пропускаються, дробові з комою читаються', () => {
@@ -69,10 +69,10 @@ describe('Apps Script: doGet', () => {
   it('бракує колонки або вкладки — зрозуміла помилка італійською', () => {
     const { sheets, script } = setup()
     sheets.Lotti.values[0][0] = 'codice'
-    expect(get(script)).toEqual({ ok: false, error: 'Scheda «Lotti»: manca la colonna «id»' })
+    expect(get(script)).toEqual({ ok: false, error: 'Scheda «Lotti»: manca la colonna «id»', code: 'config' })
     const noTab = toSheets(makeState(), COLUMNS)
     delete (noTab as Partial<typeof noTab>).Registro
-    expect(get(loadScript(noTab))).toEqual({ ok: false, error: 'Manca la scheda «Registro»' })
+    expect(get(loadScript(noTab))).toEqual({ ok: false, error: 'Manca la scheda «Registro»', code: 'config' })
   })
 })
 
@@ -112,10 +112,28 @@ describe('Apps Script: doPost дає той самий результат, що 
     expect(state).toEqual(plain(reducer(makeState(), action)))
   })
 
+  it('дія з часом телефона (at): дата партії й журнал — з неї, а не з часу відправки', () => {
+    // Записали о 23:50 15.06 офлайн, відправили наступного ранку.
+    vi.setSystemTime(new Date('2026-06-16T06:00:00Z'))
+    const { script } = setup()
+    const action: Action = { type: 'register', productId: 'mozzarella', qty: 2, locationId: 'C', at: '2026-06-15T23:50' }
+    expect(post(script, action)).toEqual({ ok: true })
+    const state = get(script).state
+    expect(state.lots.at(-1)).toMatchObject({ id: 'L-1506-MZ', producedAt: '2026-06-15', expiresAt: '2026-06-22' })
+    expect(state.log.at(-1).at).toBe('2026-06-15T23:50')
+    expect(state).toEqual(plain(reducer(makeState(), action)))
+  })
+
+  it('некоректний at ігнорується — береться поточний час', () => {
+    const { script } = setup()
+    post(script, { type: 'move', lotId: 'MZ-1', locationId: 'A', at: 'ieri sera' })
+    expect(get(script).state.log.at(-1).at).toBe('2026-06-15T14:00')
+  })
+
   it('«spedito» остаточний: повернути статус не можна, таблиця не змінюється', () => {
     const { script } = setup()
     const before = get(script).state
-    expect(post(script, { type: 'orderStatus', orderId: 'O4', status: 'nuovo' })).toEqual({ ok: false, error: 'Ordine O4 già spedito' })
+    expect(post(script, { type: 'orderStatus', orderId: 'O4', status: 'nuovo' })).toEqual({ ok: false, error: 'Ordine O4 già spedito', code: 'rejected' })
     expect(get(script).state).toEqual(before)
   })
 
@@ -132,8 +150,8 @@ describe('Apps Script: doPost дає той самий результат, що 
       [{ type: 'orderStatus', orderId: 'O1', status: 'perso' }, 'Stato non valido: perso'],
       [{ type: 'reset' }, 'Azione sconosciuta: reset'],
     ]
-    for (const [action, error] of bad) expect(post(script, action)).toEqual({ ok: false, error })
-    expect(post(script, { type: 'ship', lotId: 'YB-1', qty: 1 }, 'sbagliato')).toEqual({ ok: false, error: 'Token non valido' })
+    for (const [action, error] of bad) expect(post(script, action)).toEqual({ ok: false, error, code: 'rejected' })
+    expect(post(script, { type: 'ship', lotId: 'YB-1', qty: 1 }, 'sbagliato')).toEqual({ ok: false, error: 'Token non valido', code: 'auth' })
     expect(get(script).state).toEqual(before)
   })
 })

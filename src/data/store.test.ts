@@ -2,7 +2,7 @@
 // а некоректна дія повертає той самий стан без змін.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { reducer } from './reducer'
+import { reducer, stamp } from './reducer'
 import { TEST_NOW, makeState } from './testState'
 import { STATE_VERSION, type AppState } from './types'
 
@@ -42,6 +42,17 @@ describe('register — нова партія', () => {
     const next = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
     expect(next.lots.at(-1)).toMatchObject({ id: 'L-1606-MZ', producedAt: '2026-06-16', expiresAt: '2026-06-23' })
     expect(next.log.at(-1)!.at).toBe('2026-06-16T00:30')
+  })
+
+  it('дія з at (час на телефоні) — дата партії й журнал беруться з нього', () => {
+    vi.setSystemTime(new Date('2026-06-16T06:00:00Z'))
+    const next = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C', at: '2026-06-15T23:50' })
+    expect(next.lots.at(-1)).toMatchObject({ id: 'L-1506-MZ', producedAt: '2026-06-15', expiresAt: '2026-06-22' })
+    expect(next.log.at(-1)!.at).toBe('2026-06-15T23:50')
+  })
+
+  it('stamp ставить час за Римом', () => {
+    expect(stamp({ type: 'reset' }, new Date('2026-06-15T22:30:00Z'))).toEqual({ type: 'reset', at: '2026-06-16T00:30' })
   })
 
   it('взимку журнал теж за Римом (UTC+1)', () => {

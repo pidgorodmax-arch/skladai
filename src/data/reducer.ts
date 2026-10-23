@@ -6,18 +6,26 @@ import { createSeed, expiryFor, lotCode } from './seed'
 import { romeDate, romeDateTime } from './time'
 import type { AppState, Lot, OrderStatus } from './types'
 
-export type Action =
+/**
+ * `at` — коли дію зробили («РРРР-ММ-ДДTгг:хх» за Римом). Його ставить
+ * dispatch, щоб дія з офлайн-черги, відправлена пізніше, лишилась у журналі
+ * й у даті партії тим часом, коли її зробили в цеху.
+ */
+export type Action = (
   | { type: 'register'; productId: string; qty: number; locationId: string; milkLitres?: number }
   | { type: 'ship'; lotId: string; qty: number }
   | { type: 'move'; lotId: string; locationId: string }
   | { type: 'orderStatus'; orderId: string; status: OrderStatus }
   | { type: 'reset' }
+) & { at?: string }
 
-function now(): string {
-  return romeDateTime(new Date())
+/** Позначає дію часом «зараз» за Римом (робить dispatch). */
+export function stamp(action: Action, at: Date = new Date()): Action {
+  return { ...action, at: romeDateTime(at) }
 }
 
 export function reducer(state: AppState, action: Action): AppState {
+  const now = () => action.at ?? romeDateTime(new Date())
   switch (action.type) {
     case 'register': {
       const product = state.products.find((p) => p.id === action.productId)
@@ -25,7 +33,7 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!product || !location || action.qty <= 0) return state
       // Дата за Римом (як на екрані Registra), а не UTC і не пояс пристрою:
       // після півночі в Італії UTC ще показує вчорашній день.
-      const producedAt = romeDate(new Date())
+      const producedAt = action.at ? action.at.slice(0, 10) : romeDate(new Date())
       const lot: Lot = {
         id: lotCode(product.abbr, producedAt, state.lots.map((l) => l.id)),
         productId: product.id,
