@@ -40,6 +40,16 @@ export const MIGRATIONS: Record<number, Migration> = {
         )
       : old.products,
   }),
+  // v3 (2.6): у партії внутрішній ID (`id`) і окремий код для людей (`code`).
+  // Старі партії мали лише код у `id` — він і стає `code`, а `id` лишається
+  // тим самим, тож усі посилання на партії не змінюються.
+  2: (old) => ({
+    ...old,
+    version: 3,
+    lots: Array.isArray(old.lots)
+      ? old.lots.map((l: unknown) => (isRecord(l) && typeof l.code !== 'string' ? { ...l, code: String(l.id ?? '') } : l))
+      : old.lots,
+  }),
 }
 
 /** Застосовує кроки по черзі до версії `target`. null — якщо дійти не можна. */

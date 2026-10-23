@@ -6,6 +6,7 @@ import { COLUMNS, TOKEN, loadScript, toSheets, type FakeSheet } from './fakeApps
 import type { KeyValueStorage } from './persist'
 import { CACHE_KEY, QUEUE_KEY, createQueuedSource } from './queuedSource'
 import { reducer, stamp, type Action } from './reducer'
+import { lotCode } from './seed'
 import { createSheetsSource, type FetchLike } from './sheetsSource'
 import { TEST_NOW, makeState } from './testState'
 import type { AppState } from './types'
@@ -44,7 +45,9 @@ function makeSource(fetchFn: FetchLike, storage: KeyValueStorage, url = URL_EXEC
   return createQueuedSource(createSheetsSource({ url, token: TOKEN }, fetchFn), url, storage)
 }
 
-const lotIds = (sheet: FakeSheet) => sheet.values.slice(1).map((r) => r[0])
+/** Колонка вкладки Lotti за назвою (id — внутрішній, codice — для людей). */
+const column = (sheet: FakeSheet, name: string) => sheet.values.slice(1).map((r) => r[sheet.values[0].indexOf(name)])
+const lotCodes = (sheet: FakeSheet) => column(sheet, 'codice')
 const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x))
 
 beforeEach(() => {
@@ -68,12 +71,12 @@ describe('офлайн-черга', () => {
     await source.sync.flush()
     expect(source.sync.status()).toMatchObject({ pending: 1, offline: true, error: null })
     expect(JSON.parse(storage.data[QUEUE_KEY]).value).toEqual([action])
-    expect(lotIds(sheets.Lotti)).not.toContain('L-1506-MZ')
+    expect(lotCodes(sheets.Lotti)).not.toContain('L-1506-MZ')
 
     net.online = true
     await source.sync.flush()
     expect(source.sync.status()).toMatchObject({ pending: 0, offline: false, syncing: false })
-    expect(lotIds(sheets.Lotti)).toContain('L-1506-MZ')
+    expect(lotCodes(sheets.Lotti)).toContain('L-1506-MZ')
     expect(JSON.parse(storage.data[QUEUE_KEY]).value).toEqual([])
   })
 
@@ -87,7 +90,7 @@ describe('офлайн-черга', () => {
     net.online = true
     await source.sync.flush()
     const row = sheets.Lotti.values.at(-1)!
-    expect(row.slice(0, 1)).toEqual(['L-1506-MZ'])
+    expect(row[COLUMNS.Lotti.findIndex((c) => c[0] === 'codice')]).toBe('L-1506-MZ')
     expect(row[COLUMNS.Lotti.findIndex((c) => c[0] === 'data_produzione')]).toBe('2026-06-15')
     expect(sheets.Registro.values.at(-1)![0]).toBe('2026-06-15T23:50')
   })
@@ -113,7 +116,7 @@ describe('офлайн-черга', () => {
     const fresh = await third.load()
     expect(fresh.lots.find((l) => l.id === 'YB-1')!.qty).toBe(70)
     expect(third.sync.status().pending).toBe(0)
-    expect(sheets.Registro.values.at(-1)![1]).toBe('Uscita 30 dal lotto YB-1')
+    expect(sheets.Registro.values.at(-1)![1]).toBe('Uscita 30 dal lotto L-0106-YB')
   })
 
   it('відкрили без мережі з порожньою чергою → мережа повернулась → позначка зникає, дані свіжі', async () => {
@@ -185,16 +188,15 @@ describe('офлайн-черга', () => {
     const source = makeSource(fetchFn, memoryStorage())
     await source.load()
     net.online = false
-    const actions: Action[] = [
-      stamp({ type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' }),
-      stamp({ type: 'register', productId: 'mozzarella', qty: 2, locationId: 'C' }),
-      stamp({ type: 'move', lotId: 'L-1506-MZ2', locationId: 'A' }),
-    ]
+    const first = stamp({ type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
+    const second = stamp({ type: 'register', productId: 'mozzarella', qty: 2, locationId: 'C' })
+    const actions: Action[] = [first, second, stamp({ type: 'move', lotId: second.type === 'register' ? second.lotId! : '', locationId: 'A' })]
     for (const a of actions) await source.apply(a)
     net.online = true
     await source.sync.flush()
     const expected = actions.reduce(reducer, makeState())
-    expect(lotIds(sheets.Lotti)).toEqual(expected.lots.map((l) => l.id))
+    expect(column(sheets.Lotti, 'id')).toEqual(expected.lots.map((l) => l.id))
+    expect(lotCodes(sheets.Lotti)).toEqual(expected.lots.map((l) => l.code))
     expect(sheets.Lotti.values.at(-1)![COLUMNS.Lotti.findIndex((c) => c[0] === 'posizione')]).toBe('A')
   })
 
@@ -207,7 +209,7 @@ describe('офлайн-черга', () => {
     // Перша спроба: таблиця записала, телефон відповіді не отримав → повтор.
     await source.sync.flush()
     expect(net.posts).toBe(2)
-    expect(lotIds(sheets.Lotti).filter((id) => String(id).startsWith('L-1506-MZ'))).toEqual(['L-1506-MZ'])
+    expect(lotCodes(sheets.Lotti).filter((code) => String(code).startsWith('L-1506-MZ'))).toEqual(['L-1506-MZ'])
     expect(source.sync.status().pending).toBe(0)
   })
 
@@ -219,7 +221,7 @@ describe('офлайн-черга', () => {
     await source.apply(stamp({ type: 'ship', lotId: 'YB-1', qty: 1 }))
     await source.sync.flush()
     expect(source.sync.status()).toMatchObject({ pending: 0, error: 'Uscita dal lotto nessuno non salvato: Lotto sconosciuto: nessuno' })
-    expect(sheets.Registro.values.at(-1)![1]).toBe('Uscita 1 dal lotto YB-1')
+    expect(sheets.Registro.values.at(-1)![1]).toBe('Uscita 1 dal lotto L-0106-YB')
     source.sync.clearError()
     expect(source.sync.status().error).toBeNull()
   })
@@ -252,5 +254,81 @@ describe('офлайн-черга', () => {
   it('«Ripristina dati demo» з таблицею недоступне', async () => {
     const { fetchFn } = fakeGoogle()
     await expect(makeSource(fetchFn, memoryStorage()).apply({ type: 'reset' })).rejects.toMatchObject({ code: 'rejected' })
+  })
+})
+
+describe('два телефони без мережі створили однаковий код партії (2.6)', () => {
+  /** Телефон: своя «мережа», своє сховище, та сама таблиця. */
+  function phone(fetchFn: FetchLike) {
+    const net = { online: true }
+    const own: FetchLike = (u, i) => (net.online ? fetchFn(u, i) : Promise.reject(new TypeError('Failed to fetch')))
+    const source = makeSource(own, memoryStorage())
+    return { net, source }
+  }
+
+  /** Як екран Registra: код рахується з того, що телефон бачить локально. */
+  function registerOnPhone(state: AppState, qty: number) {
+    const code = lotCode('MZ', '2026-06-15', state.lots.map((l) => l.code))
+    return stamp({ type: 'register', productId: 'mozzarella', qty, locationId: 'C', code })
+  }
+
+  it('таблиця дає …MZ і …MZ2, а списання з другого телефона йде саме на його партію', async () => {
+    const { sheets, fetchFn } = fakeGoogle()
+    const a = phone(fetchFn)
+    const b = phone(fetchFn)
+    const stateA = await a.source.load()
+    const stateB = await b.source.load()
+    a.net.online = false
+    b.net.online = false
+
+    // Обидва телефони офлайн записують моцарелу — і обидва показують L-1506-MZ.
+    const regA = registerOnPhone(stateA, 40)
+    const regB = registerOnPhone(stateB, 10)
+    expect(regA.type === 'register' && regA.code).toBe('L-1506-MZ')
+    expect(regB.type === 'register' && regB.code).toBe('L-1506-MZ')
+    const idA = regA.type === 'register' ? regA.lotId! : ''
+    const idB = regB.type === 'register' ? regB.lotId! : ''
+    expect(idA).not.toBe(idB)
+    await a.source.apply(regA)
+    await b.source.apply(regB)
+    // Телефон B ще офлайн списує 3 і переміщує СВОЮ партію (на екрані — L-1506-MZ).
+    await b.source.apply(stamp({ type: 'ship', lotId: idB, qty: 3, code: 'L-1506-MZ' }))
+    await b.source.apply(stamp({ type: 'move', lotId: idB, locationId: 'A', code: 'L-1506-MZ' }))
+
+    // Першим синхронізується A, потім B.
+    a.net.online = true
+    await a.source.sync.flush()
+    const seenB: AppState[] = []
+    b.source.sync.onFreshState((s) => seenB.push(s))
+    b.net.online = true
+    await b.source.sync.flush()
+
+    const lots = sheets.Lotti.values.slice(1)
+    const col = (name: string) => sheets.Lotti.values[0].indexOf(name)
+    const rowA = lots.find((r) => r[col('id')] === idA)!
+    const rowB = lots.find((r) => r[col('id')] === idB)!
+    // Код другої партії таблиця змінила, ID — ні.
+    expect([rowA[col('codice')], rowA[col('quantita')], rowA[col('posizione')]]).toEqual(['L-1506-MZ', 40, 'C'])
+    expect([rowB[col('codice')], rowB[col('quantita')], rowB[col('posizione')]]).toEqual(['L-1506-MZ2', 7, 'A'])
+    expect(sheets.Registro.values.slice(-4).map((r) => r[1])).toEqual([
+      'Prodotto lotto L-1506-MZ: Mozzarella 40 kg → Cella 1 · ripiano 1',
+      'Prodotto lotto L-1506-MZ2: Mozzarella 10 kg → Cella 1 · ripiano 1',
+      'Uscita 3 dal lotto L-1506-MZ2',
+      'Lotto L-1506-MZ2 spostato in Scaffale A',
+    ])
+    // Після синхронізації телефон B бачить справжній код своєї партії.
+    expect(seenB.at(-1)!.lots.find((l) => l.id === idB)).toMatchObject({ code: 'L-1506-MZ2', qty: 7, locationId: 'A' })
+    expect(b.source.sync.status()).toMatchObject({ pending: 0, error: null })
+  })
+
+  it('дія над партією, якої в таблиці немає, відхиляється з кодом для людей — чужу не чіпає', async () => {
+    const { sheets, fetchFn } = fakeGoogle()
+    const source = makeSource(fetchFn, memoryStorage())
+    await source.load()
+    const before = sheets.Lotti.values.map((r) => [...r])
+    await source.apply(stamp({ type: 'ship', lotId: 'id-che-non-esiste', qty: 1, code: 'L-1206-MZ' }))
+    await source.sync.flush()
+    expect(source.sync.status().error).toBe('Uscita dal lotto L-1206-MZ non salvato: Lotto sconosciuto: L-1206-MZ')
+    expect(sheets.Lotti.values).toEqual(before)
   })
 })

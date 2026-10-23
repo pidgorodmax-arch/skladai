@@ -24,7 +24,8 @@ describe('register — нова партія', () => {
     const next = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 40, locationId: 'C', milkLitres: 410 })
     const lot = next.lots.at(-1)!
     expect(lot).toEqual({
-      id: 'L-1506-MZ',
+      id: 'L-1506-MZ', // без lotId (дія не з телефона) ID = код
+      code: 'L-1506-MZ',
       productId: 'mozzarella',
       qty: 40,
       locationId: 'C',
@@ -40,14 +41,14 @@ describe('register — нова партія', () => {
   it('після півночі за Римом партія й журнал отримують римську дату, а не дату пристрою', () => {
     vi.setSystemTime(new Date('2026-06-15T22:30:00Z')) // у Римі вже 16.06, 00:30
     const next = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
-    expect(next.lots.at(-1)).toMatchObject({ id: 'L-1606-MZ', producedAt: '2026-06-16', expiresAt: '2026-06-23' })
+    expect(next.lots.at(-1)).toMatchObject({ code: 'L-1606-MZ', producedAt: '2026-06-16', expiresAt: '2026-06-23' })
     expect(next.log.at(-1)!.at).toBe('2026-06-16T00:30')
   })
 
   it('дія з at (час на телефоні) — дата партії й журнал беруться з нього', () => {
     vi.setSystemTime(new Date('2026-06-16T06:00:00Z'))
     const next = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C', at: '2026-06-15T23:50' })
-    expect(next.lots.at(-1)).toMatchObject({ id: 'L-1506-MZ', producedAt: '2026-06-15', expiresAt: '2026-06-22' })
+    expect(next.lots.at(-1)).toMatchObject({ code: 'L-1506-MZ', producedAt: '2026-06-15', expiresAt: '2026-06-22' })
     expect(next.log.at(-1)!.at).toBe('2026-06-15T23:50')
   })
 
@@ -63,11 +64,42 @@ describe('register — нова партія', () => {
     expect(next.log.at(-1)!.at).toBe('2026-01-15T23:30')
   })
 
+  it('партія отримує ID від телефона (lotId) і код, який людина бачила на екрані', () => {
+    const next = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C', lotId: 'tel-1', code: 'L-1506-MZ' })
+    expect(next.lots.at(-1)).toMatchObject({ id: 'tel-1', code: 'L-1506-MZ' })
+  })
+
+  it('повтор register з тим самим ID партії нічого не змінює', () => {
+    const action = { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C', lotId: 'tel-1' } as const
+    const once = reducer(makeState(), action)
+    expect(reducer(once, action)).toBe(once)
+  })
+
+  it('код, уже зайнятий іншою партією, — наступний вільний; некоректний код ігнорується', () => {
+    const once = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C', lotId: 'a', code: 'L-1506-MZ' })
+    const twice = reducer(once, { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C', lotId: 'b', code: 'L-1506-MZ' })
+    expect(twice.lots.slice(-2).map((l) => [l.id, l.code])).toEqual([['a', 'L-1506-MZ'], ['b', 'L-1506-MZ2']])
+    const odd = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C', code: '=SUM(A1)' })
+    expect(odd.lots.at(-1)!.code).toBe('L-1506-MZ')
+  })
+
+  it('stamp дає новій партії внутрішній ID, інші дії не чіпає', () => {
+    const reg = stamp({ type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
+    expect(reg.type === 'register' && reg.lotId).toMatch(/^[A-Za-z0-9._-]{1,64}$/)
+    expect(stamp({ type: 'ship', lotId: 'x', qty: 1 })).toMatchObject({ type: 'ship', lotId: 'x' })
+  })
+
+  it('списання й переміщення шукають партію лише за ID, не за кодом', () => {
+    const state = makeState()
+    expect(reducer(state, { type: 'ship', lotId: 'L-1206-MZ', qty: 1 })).toBe(state) // це код, не ID
+    expect(reducer(state, { type: 'ship', lotId: 'MZ-1', qty: 1, code: 'L-0106-YB' }).lots.find((l) => l.id === 'MZ-1')!.qty).toBe(19)
+  })
+
   it('код лоту бере сиглу з продукту (її можна змінити в таблиці)', () => {
     const state = makeState()
     state.products = state.products.map((p) => (p.id === 'mozzarella' ? { ...p, abbr: 'MOZ' } : p))
     const next = reducer(state, { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
-    expect(next.lots.at(-1)!.id).toBe('L-1506-MOZ')
+    expect(next.lots.at(-1)!.code).toBe('L-1506-MOZ')
   })
 
   it('Montasio отримує термін null (витримка)', () => {
@@ -78,7 +110,7 @@ describe('register — нова партія', () => {
   it('друга партія того ж дня отримує інший код', () => {
     const once = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
     const twice = reducer(once, { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
-    expect(twice.lots.slice(-2).map((l) => l.id)).toEqual(['L-1506-MZ', 'L-1506-MZ2'])
+    expect(twice.lots.slice(-2).map((l) => l.code)).toEqual(['L-1506-MZ', 'L-1506-MZ2'])
   })
 
   it('ігнорує нульову кількість, невідомий продукт або місце', () => {
@@ -93,13 +125,13 @@ describe('ship — списання з партії', () => {
   it('зменшує кількість і пише в журнал', () => {
     const next = reducer(makeState(), { type: 'ship', lotId: 'MZ-1', qty: 5 })
     expect(qtyOf(next, 'MZ-1')).toBe(15)
-    expect(next.log.at(-1)!.text).toBe('Uscita 5 dal lotto MZ-1')
+    expect(next.log.at(-1)!.text).toBe('Uscita 5 dal lotto L-1206-MZ')
   })
 
   it('не списує більше, ніж є, і прибирає порожню партію', () => {
     const next = reducer(makeState(), { type: 'ship', lotId: 'MZ-1', qty: 999 })
     expect(qtyOf(next, 'MZ-1')).toBeUndefined()
-    expect(next.log.at(-1)!.text).toBe('Uscita 20 dal lotto MZ-1')
+    expect(next.log.at(-1)!.text).toBe('Uscita 20 dal lotto L-1206-MZ')
   })
 
   it('не змінює вихідний стан (незмінність)', () => {
@@ -119,7 +151,7 @@ describe('move — переміщення партії', () => {
   it('змінює місце і пише в журнал', () => {
     const next = reducer(makeState(), { type: 'move', lotId: 'MO-OLD', locationId: 'B' })
     expect(next.lots.find((l) => l.id === 'MO-OLD')!.locationId).toBe('B')
-    expect(next.log.at(-1)!.text).toBe('Lotto MO-OLD spostato in Scaffale B')
+    expect(next.log.at(-1)!.text).toBe('Lotto L-1506-MO spostato in Scaffale B')
   })
 
   it('ігнорує невідому партію або місце', () => {

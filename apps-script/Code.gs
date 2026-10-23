@@ -14,7 +14,7 @@
 // Безпека: доступ лише з токеном. Токен зберігається у властивостях скрипта
 // (Impostazioni progetto → Proprietà script → TOKEN), не в коді й не в таблиці.
 
-var STATE_VERSION = 2
+var STATE_VERSION = 3
 var TIME_ZONE = 'Europe/Rome'
 
 // Колонки кожної вкладки: [назва в таблиці, поле в застосунку, тип].
@@ -56,8 +56,10 @@ var COLUMNS = {
     ['stato', 'status', 'text?'],
     ['nota', 'note', 'text?'],
   ],
+  // id — внутрішній ID (створює телефон, людям не потрібен); codice — код для людей.
   Lotti: [
     ['id', 'id', 'text'],
+    ['codice', 'code', 'text'],
     ['prodotto', 'productId', 'text'],
     ['quantita', 'qty', 'num'],
     ['posizione', 'locationId', 'text'],
@@ -161,7 +163,17 @@ function readTable(name) {
     if (!(c[0] in col)) fail('config', 'Scheda «' + name + '»: manca la colonna «' + c[0] + '»')
   })
   var rows = []
+  // Однаковий id у двох рядках — дія могла б потрапити не на той рядок.
+  // (Ordini — виняток: там рядки одного замовлення мають спільний id;
+  // Registro не має id.)
+  var seen = {}
   for (var r = 1; r < values.length; r++) {
+    if (name === 'Lotti') {
+      // Партія, внесена вручну без id, — ID = codice. Старий рядок (до 2.6,
+      // колонку codice додали пізніше) — codice = id, як міграція v2→v3.
+      if (isEmpty(values[r][col.id]) && !isEmpty(values[r][col.codice])) values[r][col.id] = values[r][col.codice]
+      if (isEmpty(values[r][col.codice]) && !isEmpty(values[r][col.id])) values[r][col.codice] = values[r][col.id]
+    }
     // Рядок без першої колонки (id / data_ora) — порожній, пропускаємо.
     if (isEmpty(values[r][col[columns[0][0]]])) continue
     var data = {}
@@ -169,6 +181,10 @@ function readTable(name) {
       var value = toField(values[r][col[c[0]]], c[2], name, c[0], r + 1)
       if (value !== undefined) data[c[1]] = value
     })
+    if (typeof data.id === 'string' && name !== 'Ordini') {
+      if (seen[data.id]) fail('config', 'Scheda «' + name + '», riga ' + (r + 1) + ': id «' + data.id + '» ripetuto (già alla riga ' + seen[data.id] + ')')
+      seen[data.id] = r + 1
+    }
     rows.push({ row: r + 1, data: data })
   }
   return { sheet: sheet, header: header, col: col, rows: rows }
@@ -252,11 +268,23 @@ function addDays(iso, days) {
 /** Як lotCode у seed.ts: «L-ДДММ-сигла», за повтору того ж дня — 2, 3, … */
 function lotCode(abbr, producedAt, existing) {
   var parts = producedAt.split('-')
-  var base = 'L-' + parts[2] + parts[1] + '-' + (abbr || 'XX')
-  var code = base
+  return withSuffix('L-' + parts[2] + parts[1] + '-' + (abbr || 'XX'), existing)
+}
+
+/** Як withSuffix у seed.ts: base, а якщо зайнятий — base2, base3, … */
+function withSuffix(base, existing) {
+  var value = base
   var n = 2
-  while (existing.indexOf(code) !== -1) code = base + n++
-  return code
+  while (existing.indexOf(value) !== -1) value = base + n++
+  return value
+}
+
+var LOT_CODE = /^L-\d{4}-[A-Z0-9]+$/
+var LOT_ID = /^[A-Za-z0-9._-]{1,64}$/
+
+/** Як партію назвати людям у повідомленні: код (якщо телефон його передав) або ID. */
+function lotLabel(a) {
+  return typeof a.code === 'string' && LOT_CODE.test(a.code) ? a.code : a.lotId
 }
 
 // ---------- Запис ----------
@@ -330,11 +358,21 @@ function register(t, a, now) {
   if (!locationRow) fail('rejected', 'Posizione sconosciuta: ' + a.locationId)
   var qty = positive(a.qty, 'Quantità non valida')
   var milk = a.milkLitres == null ? '' : positive(a.milkLitres, 'Litri di latte non validi')
+  if (a.lotId != null && !(typeof a.lotId === 'string' && LOT_ID.test(a.lotId))) fail('rejected', 'ID lotto non valido')
+  // Партія з цим ID уже є — це повтор тієї самої дії, другу не створюємо.
+  if (a.lotId && findRow(t.Lotti, a.lotId)) return
   var product = productRow.data
   var producedAt = now.slice(0, 10)
-  var id = lotCode(product.abbr, producedAt, t.Lotti.rows.map(function (r) { return r.data.id }))
+  // Код, який людина бачила на телефоні. Якщо його вже зайняла інша партія
+  // (два телефони офлайн) — наступний вільний: …MZ2. Зв'язок тримає ID.
+  var codes = t.Lotti.rows.map(function (r) { return r.data.code })
+  var code = typeof a.code === 'string' && LOT_CODE.test(a.code) && codes.indexOf(a.code) === -1
+    ? a.code
+    : lotCode(product.abbr, producedAt, codes)
+  var id = a.lotId || withSuffix(code, t.Lotti.rows.map(function (r) { return r.data.id }))
   appendRow(t.Lotti, {
     id: id,
+    codice: code,
     prodotto: product.id,
     quantita: qty,
     posizione: locationRow.data.id,
@@ -342,25 +380,25 @@ function register(t, a, now) {
     scadenza: product.shelfLifeDays == null ? '' : addDays(producedAt, product.shelfLifeDays),
     litri_latte: milk,
   })
-  writeLog(t, now, 'Prodotto lotto ' + id + ': ' + product.name + ' ' + qty + ' ' + product.unit + ' → ' + locationRow.data.name)
+  writeLog(t, now, 'Prodotto lotto ' + code + ': ' + product.name + ' ' + qty + ' ' + product.unit + ' → ' + locationRow.data.name)
 }
 
 function ship(t, a, now) {
   var lot = findRow(t.Lotti, a.lotId)
-  if (!lot) fail('rejected', 'Lotto sconosciuto: ' + a.lotId)
+  if (!lot) fail('rejected', 'Lotto sconosciuto: ' + lotLabel(a))
   var qty = Math.min(positive(a.qty, 'Quantità non valida'), lot.data.qty)
   lot.data.qty -= qty
   saveLotQuantities(t.Lotti, [lot])
-  writeLog(t, now, 'Uscita ' + qty + ' dal lotto ' + lot.data.id)
+  writeLog(t, now, 'Uscita ' + qty + ' dal lotto ' + lot.data.code)
 }
 
 function move(t, a, now) {
   var lot = findRow(t.Lotti, a.lotId)
   var to = findRow(t.Posizioni, a.locationId)
-  if (!lot) fail('rejected', 'Lotto sconosciuto: ' + a.lotId)
+  if (!lot) fail('rejected', 'Lotto sconosciuto: ' + lotLabel(a))
   if (!to) fail('rejected', 'Posizione sconosciuta: ' + a.locationId)
   setCell(t.Lotti, lot.row, 'posizione', to.data.id)
-  writeLog(t, now, 'Lotto ' + lot.data.id + ' spostato in ' + to.data.name)
+  writeLog(t, now, 'Lotto ' + lot.data.code + ' spostato in ' + to.data.name)
 }
 
 function orderStatus(t, a, now) {

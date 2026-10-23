@@ -440,7 +440,7 @@ export default function Warehouse3D() {
                         {pm[lot.productId].name} · {fmtNum(lot.qty)} {pm[lot.productId].unit}
                       </div>
                       <div className="mono muted" style={{ fontSize: 12 }}>
-                        {lot.id} ·{' '}
+                        {lot.code} ·{' '}
                         {lot.expiresAt
                           ? `scade ${fmtDate(lot.expiresAt)}`
                           : `${Math.round(daysBetween(lot.producedAt, today) / 30)} mesi`}
@@ -452,7 +452,7 @@ export default function Warehouse3D() {
                         onSubmit={(e) => {
                           e.preventDefault()
                           const q = Number(shipping.qty.replace(',', '.'))
-                          if (q > 0) dispatch({ type: 'ship', lotId: lot.id, qty: q })
+                          if (q > 0) dispatch({ type: 'ship', lotId: lot.id, qty: q, code: lot.code })
                           setShipping(null)
                         }}
                       >
@@ -470,11 +470,11 @@ export default function Warehouse3D() {
                       </form>
                     ) : (
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <label className="sr-only" htmlFor={`m-${lot.id}`}>Sposta {lot.id}</label>
+                        <label className="sr-only" htmlFor={`m-${lot.id}`}>Sposta {lot.code}</label>
                         <select
                           id={`m-${lot.id}`}
                           value=""
-                          onChange={(e) => e.target.value && dispatch({ type: 'move', lotId: lot.id, locationId: e.target.value })}
+                          onChange={(e) => e.target.value && dispatch({ type: 'move', lotId: lot.id, locationId: e.target.value, code: lot.code })}
                           style={{ minHeight: 36, borderRadius: 8, border: '1px solid var(--field)', background: 'var(--card)', padding: '0 6px', fontSize: 14, maxWidth: 110 }}
                         >
                           <option value="">Sposta…</option>

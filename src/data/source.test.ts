@@ -52,7 +52,7 @@ describe('createDemoSource', () => {
     const reloaded = await createDemoSource(storage).load()
     expect(reloaded.lots.find((l) => l.id === 'MZ-1')?.qty).toBe(15)
     expect(reloaded.lots.find((l) => l.id === 'MO-OLD')?.locationId).toBe('B')
-    expect(reloaded.log.map((e) => e.text)).toEqual(['Uscita 5 dal lotto MZ-1', 'Lotto MO-OLD spostato in Scaffale B'])
+    expect(reloaded.log.map((e) => e.text)).toEqual(['Uscita 5 dal lotto L-1206-MZ', 'Lotto L-1506-MO spostato in Scaffale B'])
   })
 
   it('apply без load теж працює (бере стан зі сховища)', async () => {

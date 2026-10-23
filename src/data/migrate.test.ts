@@ -39,6 +39,8 @@ describe('v1 → v2: сигла продукту (2.2a)', () => {
     return {
       ...state,
       version: 1,
+      // у v1 партія мала лише id (він же код для людей)
+      lots: state.lots.map(({ code: _code, ...lot }) => lot),
       products: [
         ...state.products.map(({ id, name, unit, spacePerUnit, shelfLifeDays, pricePerUnit, storage }) => ({
           id, name, unit, spacePerUnit, shelfLifeDays, pricePerUnit, storage,
@@ -59,10 +61,10 @@ describe('v1 → v2: сигла продукту (2.2a)', () => {
     ])
   })
 
-  it('партії, замовлення й журнал не змінюються', () => {
+  it('партії, замовлення й журнал не губляться (партія отримує code = старий id)', () => {
     const old = v1State()
     const migrated = migrate(old)!
-    expect(migrated.lots).toEqual(old.lots)
+    expect(migrated.lots).toEqual((old.lots as { id: string }[]).map((l) => ({ ...l, code: l.id })))
     expect(migrated.orders).toEqual(old.orders)
     expect(migrated.log).toEqual(old.log)
   })
@@ -71,6 +73,22 @@ describe('v1 → v2: сигла продукту (2.2a)', () => {
     expect(fallbackAbbr('123')).toBe('XX')
     expect(fallbackAbbr('')).toBe('XX')
     expect(fallbackAbbr('c1-latte')).toBe('CL')
+  })
+})
+
+describe('v2 → v3: внутрішній ID партії і код для людей (2.6)', () => {
+  it('старий id стає кодом для людей, сам id не змінюється — посилання не ламаються', () => {
+    const state = makeState()
+    const v2 = { ...state, version: 2, lots: [{ id: 'L-1506-MZ', productId: 'mozzarella', qty: 5, locationId: 'C', producedAt: '2026-06-15', expiresAt: '2026-06-22' }] }
+    const migrated = migrate(v2)!
+    expect(migrated.version).toBe(3)
+    expect(migrated.lots).toEqual([{ id: 'L-1506-MZ', code: 'L-1506-MZ', productId: 'mozzarella', qty: 5, locationId: 'C', producedAt: '2026-06-15', expiresAt: '2026-06-22' }])
+    expect(migrated.products).toEqual(state.products)
+  })
+
+  it('партія, що вже має code, не змінюється', () => {
+    const state = makeState()
+    expect(migrate({ ...state, version: 2 })!.lots).toEqual(state.lots)
   })
 })
 

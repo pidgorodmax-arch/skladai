@@ -163,7 +163,7 @@ export default function Dashboard() {
                       {pm[l.productId].name} · {fmtNum(l.qty)} {pm[l.productId].unit}
                     </div>
                     <div className="mono muted" style={{ fontSize: 13 }}>
-                      {l.id} · {lm[l.locationId]?.name}
+                      {l.code} · {lm[l.locationId]?.name}
                     </div>
                   </div>
                   <span className={`chip ${cls}`}>{d <= 0 ? 'oggi' : `${d} gg`}</span>

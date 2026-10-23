@@ -28,7 +28,7 @@ export default function Register() {
   const qtyNum = Number(qty.replace(',', '.')) || 0
   const milkNum = Number(milk.replace(',', '.')) || 0
   const producedAt = isoDate(today)
-  const nextLot = lotCode(product.abbr, producedAt, state.lots.map((l) => l.id))
+  const nextLot = lotCode(product.abbr, producedAt, state.lots.map((l) => l.code))
   const expiry = expiryFor(product, producedAt)
   const yieldPct = product.unit === 'kg' && milkNum > 0 ? (qtyNum / milkNum) * 100 : null
   const planRow = productionPlan(state, today).find((r) => r.product.id === product.id)
@@ -43,7 +43,8 @@ export default function Register() {
   function submit(e: FormEvent) {
     e.preventDefault()
     if (!loc || qtyNum <= 0) return
-    dispatch({ type: 'register', productId, qty: qtyNum, locationId: loc.id, milkLitres: milkNum || undefined })
+    // code — те, що людина бачить на екрані; внутрішній ID партії додасть stamp.
+    dispatch({ type: 'register', productId, qty: qtyNum, locationId: loc.id, milkLitres: milkNum || undefined, code: nextLot })
     setSaved({ lot: nextLot, loc: loc.id })
     setQty('')
     setMilk('')

@@ -80,8 +80,8 @@ function write(storage: KeyValueStorage, key: string, owner: string, value: unkn
 function describe(action: Action): string {
   switch (action.type) {
     case 'register': return `Lotto di ${action.productId}`
-    case 'ship': return `Uscita dal lotto ${action.lotId}`
-    case 'move': return `Spostamento del lotto ${action.lotId}`
+    case 'ship': return `Uscita dal lotto ${action.code ?? action.lotId}`
+    case 'move': return `Spostamento del lotto ${action.code ?? action.lotId}`
     case 'orderStatus': return `Ordine ${action.orderId}`
     default: return 'Operazione'
   }
