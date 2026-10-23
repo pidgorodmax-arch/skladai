@@ -91,7 +91,7 @@ curl -sL -H 'Content-Type: text/plain' \
   "$URL"
 ```
 
-Очікувано: `{"ok":true}`; у вкладці `Lotti` — новий рядок (`L-ДДММ-MZ`), у
+Очікувано: `{"ok":true}`; у вкладці `Lotti` — новий рядок (`codice` = `L-ДДММ-MZ`; без `lotId` у запиті `id` = код), у
 `Registro` — запис «Prodotto lotto …» з часом за Римом.
 
 **3. Помилки** повертаються як `{"ok":false,"error":"…"}` (італійською), а
@@ -126,9 +126,9 @@ curl -sL "$URL?token=sbagliato"
 
 | `type` | Поля | Що робить у таблиці |
 |---|---|---|
-| `register` | `productId`, `qty`, `locationId`, `milkLitres?` | Новий рядок у `Lotti`: код лоту із сигли продукту, дата за Римом, термін = дата + `giorni_scadenza` |
-| `move` | `lotId`, `locationId` | Міняє `posizione` партії |
-| `ship` | `lotId`, `qty` | Зменшує `quantita`; на 0 — видаляє рядок |
+| `register` | `productId`, `qty`, `locationId`, `milkLitres?`, `lotId?`, `code?` | Новий рядок у `Lotti`. `lotId` — внутрішній ID, створений телефоном (партію з таким ID вдруге не створює). `code` — код, який бачила людина; якщо його вже зайняла інша партія — наступний вільний (`…MZ2`). Дата за Римом, термін = дата + `giorni_scadenza` |
+| `move` | `lotId`, `locationId`, `code?` | Міняє `posizione` партії з **ID** `lotId` (`code` — лише для повідомлень) |
+| `ship` | `lotId`, `qty`, `code?` | Зменшує `quantita` партії з **ID** `lotId`; на 0 — видаляє рядок |
 | `orderStatus` | `orderId`, `status` (`nuovo` / `in_preparazione` / `spedito`) | Міняє `stato` в усіх рядках замовлення; `spedito` списує `Lotti` за FEFO і остаточний |
 
 Кожна дія, крім зміни статусу без відвантаження, дописує рядок у
