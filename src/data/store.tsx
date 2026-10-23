@@ -62,7 +62,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   )
 }
 
-type LoadStatus = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; state: AppState; source: DataSource }
+type LoadStatus = { kind: 'loading' } | { kind: 'error'; message: string; source: DataSource } | { kind: 'ready'; state: AppState; source: DataSource }
 
 /**
  * `source` має бути сталим об'єктом (створеним поза рендером): нове джерело
@@ -77,7 +77,7 @@ export function StoreProvider({ source = demoSource, onUseDemo, children }: { so
     let active = true
     source.load().then(
       (state) => active && setStatus({ kind: 'ready', state, source }),
-      (err: unknown) => active && setStatus({ kind: 'error', message: errorText(err, 'Impossibile caricare i dati. Controlla la connessione.') }),
+      (err: unknown) => active && setStatus({ kind: 'error', message: errorText(err, 'Impossibile caricare i dati. Controlla la connessione.'), source }),
     )
     return () => {
       active = false
@@ -87,13 +87,16 @@ export function StoreProvider({ source = demoSource, onUseDemo, children }: { so
   if (status.kind === 'ready' && status.source === source) {
     return <LoadedStore initial={status.state} source={source}>{children}</LoadedStore>
   }
+  // Помилку показуємо лише для поточного джерела: після «Usa i dati demo»
+  // стара помилка таблиці не повинна висіти, поки вантажиться демо.
+  const failed = status.kind === 'error' && status.source === source ? status : null
   return (
-    <main className="page" aria-busy={status.kind !== 'error'}>
-      {status.kind !== 'error' ? (
+    <main className="page" aria-busy={!failed}>
+      {!failed ? (
         <p className="muted">Caricamento dei dati…</p>
       ) : (
         <>
-          <p role="alert">{status.message}</p>
+          <p role="alert">{failed.message}</p>
           <button
             type="button"
             className="btn primary"

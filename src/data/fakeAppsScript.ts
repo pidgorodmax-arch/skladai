@@ -81,6 +81,5 @@ export function toSheets(state: AppState, columns: Columns): Record<string, Fake
   }
 }
 
-/** JSON-копія: прибирає поля зі значенням undefined, як і відповідь скрипта. */
 /** Колонки вкладок так, як їх знає скрипт. */
 export const COLUMNS = loadScript({}).COLUMNS
