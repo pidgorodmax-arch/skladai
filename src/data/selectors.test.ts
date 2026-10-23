@@ -16,6 +16,7 @@ import {
   lotsAt,
   occupancy,
   openOrders,
+  orderProgress,
   orderCoverage,
   productionPlan,
   startOfDay,
@@ -161,6 +162,22 @@ describe('коробки (2b.1): партія = сума коробок', () => 
     state.boxes.push({ id: 'ORPHAN-1', lotId: 'ORPHAN', locationId: 'C', qty: 99 })
     expect(stockByProduct(state)).toEqual(stockByProduct(makeState()))
     expect(expiringLots(state, T).map((l) => l.id)).not.toContain('EMPTY')
+  })
+})
+
+describe('прогрес збирання (2b.2)', () => {
+  it('orderProgress: «зібрано X з Y» по кожному рядку, сумуючи всі Pick', () => {
+    const state = makeState()
+    state.picks = [
+      { orderId: 'O1', productId: 'mozzarella', boxId: 'MZ-1-1', lotId: 'MZ-1', qty: 10, at: '2026-06-15T08:00', method: 'scansionato' },
+      { orderId: 'O1', productId: 'mozzarella', boxId: 'MZ-2-1', lotId: 'MZ-2', qty: 5, at: '2026-06-15T08:05', method: 'scansionato' },
+      { orderId: 'O2', productId: 'mozzarella', boxId: 'MZ-1-1', lotId: 'MZ-1', qty: 3, at: '2026-06-15T08:10', method: 'scansionato' },
+    ]
+    expect(orderProgress(state, 'O1')).toEqual([
+      { productId: 'mozzarella', ordered: 50, picked: 15 },
+      { productId: 'montasio', ordered: 5, picked: 0 },
+    ])
+    expect(orderProgress(state, 'немає')).toEqual([])
   })
 })
 

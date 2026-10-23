@@ -175,6 +175,138 @@ describe('ship — коробки партії', () => {
   })
 })
 
+describe('from — дія лише з коробками на відкритому стелажі', () => {
+  it('ship з from бере тільки з коробок цього стелажа', () => {
+    // MZ-1: 12 на C, 8 на B. Хочемо 10 зі стелажа B — є лише 8.
+    const next = reducer(splitMZ1(), { type: 'ship', lotId: 'MZ-1', qty: 10, from: 'B' })
+    expect(next.boxes.filter((b) => b.lotId === 'MZ-1')).toEqual([{ id: 'MZ-1-1', lotId: 'MZ-1', locationId: 'C', qty: 12 }])
+    expect(next.log.at(-1)!.text).toBe('Uscita 8 dal lotto L-1206-MZ')
+  })
+
+  it('move з from переносить тільки коробки з цього стелажа', () => {
+    const next = reducer(splitMZ1(), { type: 'move', lotId: 'MZ-1', locationId: 'A', from: 'B' })
+    expect(next.boxes.filter((b) => b.lotId === 'MZ-1').map((b) => [b.id, b.locationId])).toEqual([['MZ-1-1', 'C'], ['MZ-1-2', 'A']])
+  })
+})
+
+describe('placeBox — нова коробка з частини іншої', () => {
+  it('відділяє qty у нову коробку на іншому стелажі; партія не змінюється', () => {
+    const next = reducer(makeState(), { type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 8, locationId: 'B', boxId: 'etichetta-1' })
+    expect(next.boxes.filter((b) => b.lotId === 'MZ-1')).toEqual([
+      { id: 'MZ-1-1', lotId: 'MZ-1', locationId: 'C', qty: 12 },
+      { id: 'etichetta-1', lotId: 'MZ-1', locationId: 'B', qty: 8 },
+    ])
+    expect(qtyOf(next, 'MZ-1')).toBe(20)
+    expect(next.log.at(-1)!.text).toBe('Nuovo collo dal lotto L-1206-MZ: Mozzarella 8 kg → Scaffale B')
+  })
+
+  it('уся коробка — стара зникає, партія лишається', () => {
+    const next = reducer(makeState(), { type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 20, locationId: 'B', boxId: 'nuovo' })
+    expect(next.boxes.filter((b) => b.lotId === 'MZ-1')).toEqual([{ id: 'nuovo', lotId: 'MZ-1', locationId: 'B', qty: 20 }])
+    expect(qtyOf(next, 'MZ-1')).toBe(20)
+  })
+
+  it('без boxId — наступний вільний код `<партія>-2`; stamp ставить код сам', () => {
+    expect(reducer(makeState(), { type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 1, locationId: 'B' }).boxes.at(-1)!.id).toBe('MZ-1-2')
+    const stamped = stamp({ type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 1, locationId: 'B' })
+    expect(stamped.type === 'placeBox' && stamped.boxId).toMatch(/^[A-Za-z0-9._-]{1,64}$/)
+  })
+
+  it('не можна відділити більше, ніж у коробці; нуль, невідома коробка чи місце — без змін', () => {
+    const state = makeState()
+    expect(reducer(state, { type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 21, locationId: 'B' })).toBe(state)
+    expect(reducer(state, { type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 0, locationId: 'B' })).toBe(state)
+    expect(reducer(state, { type: 'placeBox', fromBoxId: 'немає', qty: 1, locationId: 'B' })).toBe(state)
+    expect(reducer(state, { type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 1, locationId: 'Z' })).toBe(state)
+  })
+
+  it('повтор з тим самим boxId не відділяє вдруге', () => {
+    const action = { type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 5, locationId: 'B', boxId: 'b-1' } as const
+    const once = reducer(makeState(), action)
+    expect(reducer(once, action)).toBe(once)
+  })
+})
+
+describe('moveBox — переставити одну коробку', () => {
+  it('переносить лише цю коробку і пише в журнал', () => {
+    const next = reducer(splitMZ1(), { type: 'moveBox', boxId: 'MZ-1-2', locationId: 'A' })
+    expect(next.boxes.filter((b) => b.lotId === 'MZ-1').map((b) => [b.id, b.locationId])).toEqual([['MZ-1-1', 'C'], ['MZ-1-2', 'A']])
+    expect(next.log.at(-1)!.text).toBe('Collo del lotto L-1206-MZ (8) spostato in Scaffale A')
+  })
+
+  it('той самий стелаж, невідома коробка чи місце — без змін', () => {
+    const state = splitMZ1()
+    expect(reducer(state, { type: 'moveBox', boxId: 'MZ-1-2', locationId: 'B' })).toBe(state)
+    expect(reducer(state, { type: 'moveBox', boxId: 'немає', locationId: 'A' })).toBe(state)
+    expect(reducer(state, { type: 'moveBox', boxId: 'MZ-1-2', locationId: 'Z' })).toBe(state)
+  })
+})
+
+describe('pick — збирання з коробки під замовлення', () => {
+  it('зменшує коробку, пише Pick «scansionato» і журнал; «nuovo» → «in_preparazione»', () => {
+    const next = reducer(makeState(), { type: 'pick', orderId: 'O1', boxId: 'MZ-1-1', qty: 10 })
+    expect(next.boxes.find((b) => b.id === 'MZ-1-1')!.qty).toBe(10)
+    expect(next.picks).toEqual([
+      { orderId: 'O1', productId: 'mozzarella', boxId: 'MZ-1-1', lotId: 'MZ-1', qty: 10, at: '2026-06-15T14:00', method: 'scansionato' },
+    ])
+    expect(next.orders.find((o) => o.id === 'O1')!.status).toBe('in_preparazione')
+    expect(next.log.at(-1)!.text).toBe('Prelievo 10 kg Mozzarella dal lotto L-1206-MZ per ordine O1')
+  })
+
+  it('не можна взяти більше, ніж у коробці', () => {
+    const state = makeState()
+    expect(reducer(state, { type: 'pick', orderId: 'O1', boxId: 'MZ-1-1', qty: 21 })).toBe(state)
+  })
+
+  it('уся коробка — коробка й партія зникають, а в Pick лишаються коробка й лот', () => {
+    const next = reducer(makeState(), { type: 'pick', orderId: 'O1', boxId: 'MZ-1-1', qty: 20 })
+    expect(next.boxes.some((b) => b.id === 'MZ-1-1')).toBe(false)
+    expect(qtyOf(next, 'MZ-1')).toBeUndefined()
+    expect(next.picks[0]).toMatchObject({ boxId: 'MZ-1-1', lotId: 'MZ-1', qty: 20 })
+  })
+
+  it('чужий продукт, відвантажене чи невідоме замовлення, невідома коробка, нуль — без змін', () => {
+    const state = makeState()
+    expect(reducer(state, { type: 'pick', orderId: 'O1', boxId: 'YB-1-1', qty: 1 })).toBe(state) // йогурту в O1 немає
+    expect(reducer(state, { type: 'pick', orderId: 'O4', boxId: 'MO-OLD-1', qty: 1 })).toBe(state) // O4 уже spedito
+    expect(reducer(state, { type: 'pick', orderId: 'немає', boxId: 'MZ-1-1', qty: 1 })).toBe(state)
+    expect(reducer(state, { type: 'pick', orderId: 'O1', boxId: 'немає', qty: 1 })).toBe(state)
+    expect(reducer(state, { type: 'pick', orderId: 'O1', boxId: 'MZ-1-1', qty: 0 })).toBe(state)
+  })
+})
+
+describe('spedito після збирання', () => {
+  it('зібране сканером не списується вдруге; решту добирає FEFO з позначкою «automatico»', () => {
+    // O2: 10 кг моцарели. Сканером узяли 4 з MZ-2 (не FEFO, але так вирішив працівник).
+    let state = reducer(makeState(), { type: 'pick', orderId: 'O2', boxId: 'MZ-2-1', qty: 4 })
+    state = reducer(state, { type: 'orderStatus', orderId: 'O2', status: 'spedito' })
+    expect(qtyOf(state, 'MZ-2')).toBe(11)
+    expect(qtyOf(state, 'MZ-1')).toBe(14) // решта 6 — з MZ-1, що спливає раніше
+    expect(state.picks.map((p) => [p.boxId, p.qty, p.method])).toEqual([
+      ['MZ-2-1', 4, 'scansionato'],
+      ['MZ-1-1', 6, 'automatico'],
+    ])
+  })
+
+  it('усе зібрано сканером — система нічого не добирає', () => {
+    let state = reducer(makeState(), { type: 'pick', orderId: 'O2', boxId: 'MZ-2-1', qty: 10 })
+    state = reducer(state, { type: 'orderStatus', orderId: 'O2', status: 'spedito' })
+    expect(state.picks.filter((p) => p.method === 'automatico')).toEqual([])
+    expect(qtyOf(state, 'MZ-1')).toBe(20)
+  })
+
+  it('добирання по кількох коробках дає Pick на кожну коробку', () => {
+    // O5: 35 форм Montasio (MO-OLD 30, далі MO-NEW 5) і 25 кг моцарели (MZ-1 20, далі MZ-2 5).
+    const next = reducer(makeState(), { type: 'orderStatus', orderId: 'O5', status: 'spedito' })
+    expect(next.picks.map((p) => [p.productId, p.lotId, p.qty, p.method])).toEqual([
+      ['montasio', 'MO-OLD', 30, 'automatico'],
+      ['montasio', 'MO-NEW', 5, 'automatico'],
+      ['mozzarella', 'MZ-1', 20, 'automatico'],
+      ['mozzarella', 'MZ-2', 5, 'automatico'],
+    ])
+  })
+})
+
 describe('move — переміщення партії', () => {
   it('змінює місце і пише в журнал', () => {
     const next = reducer(makeState(), { type: 'move', lotId: 'MO-OLD', locationId: 'B' })

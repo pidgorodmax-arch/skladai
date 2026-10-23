@@ -2,9 +2,9 @@
 // Його викликає StoreProvider через dispatch; ті самі дії згодом
 // застосовуватиме DataSource (Google Sheets) і AI-агент.
 
-import { createSeed, expiryFor, firstBoxId, lotCode, withSuffix } from './seed'
+import { createSeed, expiryFor, firstBoxId, lotCode, nextBoxId, withSuffix } from './seed'
 import { romeDate, romeDateTime } from './time'
-import type { AppState, Box, Lot, OrderStatus } from './types'
+import type { AppState, Box, Lot, OrderStatus, Pick } from './types'
 
 /**
  * Службові поля, які ставить dispatch (див. stamp):
@@ -20,8 +20,17 @@ export type Action = (
   // lotId у ship/move — завжди внутрішній ID (Lot.id); code — лише для
   // повідомлень людям (наприклад, «Lotto L-2310-MZ non trovato»), не для пошуку.
   // Передавай code завжди (екрани, AI-агент): інакше в повідомленні буде ID.
-  | { type: 'ship'; lotId: string; qty: number; code?: string }
-  | { type: 'move'; lotId: string; locationId: string; code?: string }
+  // from — стелаж, з якого діяти (картка стелажа в 3D): лише коробки партії
+  // на ньому. Без from — усі коробки партії.
+  | { type: 'ship'; lotId: string; qty: number; code?: string; from?: string }
+  | { type: 'move'; lotId: string; locationId: string; code?: string; from?: string }
+  // Нова коробка: qty відділяємо від коробки fromBoxId (тієї ж партії) і
+  // ставимо на стелаж locationId. boxId — код етикетки нової коробки
+  // (ставить stamp, без мережі); повтор із тим самим boxId нічого не робить.
+  | { type: 'placeBox'; fromBoxId: string; qty: number; locationId: string; boxId?: string }
+  | { type: 'moveBox'; boxId: string; locationId: string }
+  // Збирання: працівник відсканував коробку й узяв qty під замовлення.
+  | { type: 'pick'; orderId: string; boxId: string; qty: number }
   | { type: 'orderStatus'; orderId: string; status: OrderStatus }
   | { type: 'reset' }
 ) & { at?: string; id?: string }
@@ -38,26 +47,38 @@ function newId(): string {
  */
 export function stamp(action: Action, at: Date = new Date(), id: string = newId()): Action {
   const stamped: Action = { ...action, at: romeDateTime(at), id }
-  return stamped.type === 'register' && !stamped.lotId ? { ...stamped, lotId: newId() } : stamped
+  if (stamped.type === 'register' && !stamped.lotId) return { ...stamped, lotId: newId() }
+  if (stamped.type === 'placeBox' && !stamped.boxId) return { ...stamped, boxId: newId() }
+  return stamped
 }
 
 /**
  * Бере `qty` з коробок `from` по черзі (у заданому порядку). Повертає нові
- * коробки стану без порожніх і скільки вдалося взяти (не більше, ніж є).
+ * коробки стану без порожніх, скільки вдалося взяти (не більше, ніж є) і
+ * скільки з якої коробки (`parts`, для записів Pick).
  */
-function takeFromBoxes(boxes: Box[], from: Box[], qty: number): { boxes: Box[]; taken: number } {
+function takeFromBoxes(boxes: Box[], from: Box[], qty: number): { boxes: Box[]; taken: number; parts: { box: Box; qty: number }[] } {
   const take = new Map<string, number>()
+  const parts: { box: Box; qty: number }[] = []
   let left = qty
   for (const b of from) {
     if (left <= 0) break
     const t = Math.min(left, b.qty)
+    if (t <= 0) continue
     take.set(b.id, t)
+    parts.push({ box: b, qty: t })
     left -= t
   }
   return {
     boxes: boxes.map((b) => (take.has(b.id) ? { ...b, qty: b.qty - take.get(b.id)! } : b)).filter((b) => b.qty > 0),
     taken: qty - left,
+    parts,
   }
+}
+
+/** Скільки вже зібрано (усіма способами) під рядок замовлення з цим продуктом. */
+function picked(picks: Pick[], orderId: string, productId: string): number {
+  return picks.filter((p) => p.orderId === orderId && p.productId === productId).reduce((s, p) => s + p.qty, 0)
 }
 
 /** Партії, у яких не лишилось жодної коробки, зникають (як раніше партія з qty 0). */
@@ -108,7 +129,8 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'ship': {
       const lot = state.lots.find((l) => l.id === action.lotId)
       if (!lot) return state
-      const { boxes, taken } = takeFromBoxes(state.boxes, state.boxes.filter((b) => b.lotId === lot.id), action.qty)
+      const from = state.boxes.filter((b) => b.lotId === lot.id && (!action.from || b.locationId === action.from))
+      const { boxes, taken } = takeFromBoxes(state.boxes, from, action.qty)
       return {
         ...state,
         lots: dropEmptyLots(state.lots, boxes),
@@ -122,9 +144,65 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!lot || !to) return state
       return {
         ...state,
-        // Уся партія переїжджає разом з усіма коробками; окрема коробка — moveBox (2b.2).
-        boxes: state.boxes.map((b) => (b.lotId === lot.id ? { ...b, locationId: to.id } : b)),
+        // Переїжджають усі коробки партії (або лише ті, що на стелажі from);
+        // одна коробка — moveBox.
+        boxes: state.boxes.map((b) => (b.lotId === lot.id && (!action.from || b.locationId === action.from) ? { ...b, locationId: to.id } : b)),
         log: [...state.log, { at: now(), text: `Lotto ${lot.code} spostato in ${to.name}` }],
+      }
+    }
+    case 'placeBox': {
+      const from = state.boxes.find((b) => b.id === action.fromBoxId)
+      const to = state.locations.find((l) => l.id === action.locationId)
+      // Не можна відділити більше, ніж є в коробці.
+      if (!from || !to || !(action.qty > 0) || action.qty > from.qty) return state
+      // Коробка з цим кодом уже є (повтор тієї самої дії) — другу не створюємо.
+      if (action.boxId && state.boxes.some((b) => b.id === action.boxId)) return state
+      const lot = state.lots.find((l) => l.id === from.lotId)
+      const product = state.products.find((p) => p.id === lot?.productId)
+      if (!lot || !product) return state
+      const box: Box = {
+        id: action.boxId ?? nextBoxId(lot.id, state.boxes.map((b) => b.id)),
+        lotId: lot.id,
+        locationId: to.id,
+        qty: action.qty,
+      }
+      const boxes = [...state.boxes.map((b) => (b.id === from.id ? { ...b, qty: b.qty - action.qty } : b)).filter((b) => b.qty > 0), box]
+      return {
+        ...state,
+        boxes,
+        log: [...state.log, { at: now(), text: `Nuovo collo dal lotto ${lot.code}: ${product.name} ${action.qty} ${product.unit} → ${to.name}` }],
+      }
+    }
+    case 'moveBox': {
+      const box = state.boxes.find((b) => b.id === action.boxId)
+      const to = state.locations.find((l) => l.id === action.locationId)
+      if (!box || !to || box.locationId === to.id) return state
+      const lot = state.lots.find((l) => l.id === box.lotId)
+      return {
+        ...state,
+        boxes: state.boxes.map((b) => (b.id === box.id ? { ...b, locationId: to.id } : b)),
+        log: [...state.log, { at: now(), text: `Collo del lotto ${lot?.code ?? box.lotId} (${box.qty}) spostato in ${to.name}` }],
+      }
+    }
+    case 'pick': {
+      const order = state.orders.find((o) => o.id === action.orderId)
+      const box = state.boxes.find((b) => b.id === action.boxId)
+      if (!order || !box || order.status === 'spedito') return state
+      const lot = state.lots.find((l) => l.id === box.lotId)
+      const product = state.products.find((p) => p.id === lot?.productId)
+      // Коробка має бути з продуктом, який є в замовленні; не більше, ніж у коробці.
+      if (!lot || !product || !order.lines.some((l) => l.productId === product.id)) return state
+      if (!(action.qty > 0) || action.qty > box.qty) return state
+      const boxes = state.boxes.map((b) => (b.id === box.id ? { ...b, qty: b.qty - action.qty } : b)).filter((b) => b.qty > 0)
+      const pick: Pick = { orderId: order.id, productId: product.id, boxId: box.id, lotId: lot.id, qty: action.qty, at: now(), method: 'scansionato' }
+      return {
+        ...state,
+        lots: dropEmptyLots(state.lots, boxes),
+        boxes,
+        picks: [...state.picks, pick],
+        // Почали збирати — замовлення вже «in preparazione».
+        orders: order.status === 'nuovo' ? state.orders.map((o) => (o.id === order.id ? { ...o, status: 'in_preparazione' } : o)) : state.orders,
+        log: [...state.log, { at: now(), text: `Prelievo ${action.qty} ${product.unit} ${product.name} dal lotto ${lot.code} per ordine ${order.id}` }],
       }
     }
     case 'orderStatus': {
@@ -134,16 +212,24 @@ export function reducer(state: AppState, action: Action): AppState {
       if (order.status === 'spedito') return state
       let lots = state.lots
       let boxes = state.boxes
+      const picks = [...state.picks]
       const log = [...state.log]
       if (action.status === 'spedito') {
-        // Списуємо зі складу за принципом FEFO: спершу коробки партій, що
-        // раніше спливають (для Montasio — найстаріші форми).
+        // Те, що вже зібрано сканером, уже списано з коробок. Решту рядка
+        // система добирає сама за FEFO — спершу коробки партій, що раніше
+        // спливають (для Montasio — найстаріші форми), — і позначає «automatico».
         const fefo = [...state.lots].sort((a, b) => (a.expiresAt ?? a.producedAt).localeCompare(b.expiresAt ?? b.producedAt))
         for (const line of order.lines) {
+          const left = line.qty - picked(state.picks, order.id, line.productId)
+          if (left <= 0) continue
           const from = fefo
             .filter((l) => l.productId === line.productId)
             .flatMap((l) => boxes.filter((b) => b.lotId === l.id))
-          boxes = takeFromBoxes(boxes, from, line.qty).boxes
+          const taken = takeFromBoxes(boxes, from, left)
+          boxes = taken.boxes
+          for (const part of taken.parts) {
+            picks.push({ orderId: order.id, productId: line.productId, boxId: part.box.id, lotId: part.box.lotId, qty: part.qty, at: now(), method: 'automatico' })
+          }
         }
         lots = dropEmptyLots(lots, boxes)
         log.push({ at: now(), text: `Spedito ordine ${order.id} a ${order.client}` })
@@ -152,6 +238,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         lots,
         boxes,
+        picks,
         log,
         orders: state.orders.map((o) => (o.id === action.orderId ? { ...o, status: action.status } : o)),
       }

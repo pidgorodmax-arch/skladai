@@ -47,6 +47,13 @@ export function firstBoxId(lotId: string): string {
   return `${lotId}-1`
 }
 
+/** Код наступної коробки партії: `<id партії>-2`, `-3`, … — перший вільний. */
+export function nextBoxId(lotId: string, existing: string[]): string {
+  let n = 2
+  while (existing.includes(`${lotId}-${n}`)) n++
+  return `${lotId}-${n}`
+}
+
 export function expiryFor(product: Product, producedAt: string): string | null {
   if (product.shelfLifeDays == null) return null
   const d = new Date(producedAt + 'T00:00:00Z')

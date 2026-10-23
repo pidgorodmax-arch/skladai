@@ -178,7 +178,8 @@ Telegram. Ключі — лише в GitHub Secrets, ніколи у фронт�
 - [x] 2.6 Внутрішній ID партії (`Lot.id` від телефона, `Lot.code` для людей; v3; колонка `Lotti.codice`)
 - [x] 2b.1 Модель коробок (`Box`, `Pick` у `types.ts` v4; партія = сума коробок — `lotQty`, `lotStock`; міграція v3→v4; демо з коробками)
 - [x] 2b.1a Вкладка `Colli` у таблиці й Apps Script (`Code.gs` v4; стара таблиця читається, при першому записі скрипт сам створює `Colli`)
-- [ ] Етап 2b — решта (2b.2–2b.8)
+- [x] 2b.2 Дії `placeBox`, `moveBox`, `pick` (`reducer.ts`, Apps Script, вкладка `Prelievi`); «spedito» добирає незібране за FEFO з позначкою `automatico`; `Pick` v5: `lotId`, `method`; прогрес — `orderProgress`
+- [ ] Етап 2b — решта (2b.3–2b.8)
 - [ ] Етап 3
 - [ ] Етап 4
 - [ ] Етап 5

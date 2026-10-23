@@ -183,6 +183,24 @@ export function agingSummary(state: AppState, today: Date) {
   return out
 }
 
+/** Скільки зібрано під рядок замовлення (сканером і автоматично). */
+export function pickedQty(state: AppState, orderId: string, productId: string): number {
+  return state.picks.filter((p) => p.orderId === orderId && p.productId === productId).reduce((s, p) => s + p.qty, 0)
+}
+
+export interface PickProgress {
+  productId: string
+  ordered: number
+  picked: number
+}
+
+/** Прогрес збирання замовлення: по рядку «зібрано X з Y». */
+export function orderProgress(state: AppState, orderId: string): PickProgress[] {
+  const order = state.orders.find((o) => o.id === orderId)
+  if (!order) return []
+  return order.lines.map((line) => ({ productId: line.productId, ordered: line.qty, picked: pickedQty(state, order.id, line.productId) }))
+}
+
 /** Чи вистачає складу, щоб закрити замовлення (для статусу в таблиці). */
 export function orderCoverage(state: AppState, orderId: string): boolean {
   const order = state.orders.find((o) => o.id === orderId)

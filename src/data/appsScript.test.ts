@@ -87,7 +87,13 @@ describe('Apps Script: doPost дає той самий результат, що 
     ['часткове списання', { type: 'ship', lotId: 'YB-1', qty: 30 }],
     ['повне списання — рядок зникає', { type: 'ship', lotId: 'MZ-2', qty: 999 }],
     ['статус без списання', { type: 'orderStatus', orderId: 'O1', status: 'in_preparazione' }],
-    ['spedito: FEFO по двох продуктах', { type: 'orderStatus', orderId: 'O5', status: 'spedito' }],
+    ['нова коробка з частини іншої', { type: 'placeBox', fromBoxId: 'MO-OLD-1', qty: 10, locationId: 'B', boxId: 'etichetta-1' }],
+    ['нова коробка без коду — наступний вільний', { type: 'placeBox', fromBoxId: 'YB-1-1', qty: 20, locationId: 'A' }],
+    ['переставити одну коробку', { type: 'moveBox', boxId: 'etichetta-1', locationId: 'A' }],
+    ['списання лише з одного стелажа', { type: 'ship', lotId: 'MO-OLD', qty: 3, from: 'A' }],
+    ['збирання сканером', { type: 'pick', orderId: 'O5', boxId: 'etichetta-1', qty: 4 }],
+    ['збирання для «nuovo» → in_preparazione', { type: 'pick', orderId: 'O3', boxId: 'YB-1-2', qty: 20 }],
+    ['spedito: FEFO по двох продуктах (добирає решту)', { type: 'orderStatus', orderId: 'O5', status: 'spedito' }],
     ['spedito при нестачі — без від\'ємних залишків', { type: 'orderStatus', orderId: 'O1', status: 'spedito' }],
   ]
 
@@ -269,6 +275,42 @@ describe('Apps Script: коробки (Colli, 2b.1a)', () => {
     const { sheets, script } = setup()
     sheets.Colli.values[2][0] = 'MO-NEW-1'
     expect(get(script)).toEqual({ ok: false, error: 'Scheda «Colli», riga 3: id «MO-NEW-1» ripetuto (già alla riga 2)', code: 'config' })
+  })
+})
+
+describe('Apps Script: збирання (Prelievi, 2b.2)', () => {
+  it('без вкладки Prelievi таблиця читається, а перше збирання само її створює', () => {
+    const { sheets, script } = setup()
+    delete (sheets as Partial<typeof sheets>).Prelievi
+    expect(get(script).state.picks).toEqual([])
+    const action: Action = { type: 'pick', orderId: 'O1', boxId: 'MZ-1-1', qty: 5 }
+    expect(post(script, action)).toEqual({ ok: true })
+    expect(sheets.Prelievi.values[0]).toEqual(['ordine', 'prodotto', 'collo', 'lotto', 'quantita', 'data_ora', 'modo'])
+    expect(get(script).state).toEqual(plain(reducer(makeState(), action)))
+  })
+
+  it('неможливе збирання відхиляється зрозумілою помилкою, таблиця не змінюється', () => {
+    const { script } = setup()
+    const before = get(script).state
+    const bad: [unknown, string][] = [
+      [{ type: 'pick', orderId: 'O1', boxId: 'MZ-1-1', qty: 21 }, 'Nel collo ci sono solo 20'],
+      [{ type: 'pick', orderId: 'O1', boxId: 'YB-1-1', qty: 1 }, "Yogurt bianco non è nell'ordine O1"],
+      [{ type: 'pick', orderId: 'O4', boxId: 'MO-OLD-1', qty: 1 }, 'Ordine O4 già spedito'],
+      [{ type: 'pick', orderId: 'O1', boxId: 'nessuno', qty: 1 }, 'Collo sconosciuto: nessuno'],
+      [{ type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 21, locationId: 'B' }, 'Nel collo ci sono solo 20'],
+      [{ type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 1, locationId: 'B', boxId: '=IMPORTXML("x")' }, 'Codice collo non valido'],
+      [{ type: 'moveBox', boxId: 'MZ-1-1', locationId: 'Z' }, 'Posizione sconosciuta: Z'],
+    ]
+    for (const [action, error] of bad) expect(post(script, action)).toEqual({ ok: false, error, code: 'rejected' })
+    expect(get(script).state).toEqual(before)
+  })
+
+  it('повтор placeBox з тим самим кодом коробки не відділяє вдруге', () => {
+    const { script } = setup()
+    const action: Action = { type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 5, locationId: 'B', boxId: 'b-1', id: 'a-1' }
+    post(script, action)
+    post(script, { ...action, id: 'a-2' })
+    expect(get(script).state).toEqual(plain(reducer(makeState(), action)))
   })
 })
 
