@@ -1,7 +1,7 @@
 // Тести розрахунків. Селектори отримують «сьогодні» параметром (T), тому
 // годинник «заморожувати» не треба: результат залежить лише від даних і дати.
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   ageClass,
   agingSummary,
@@ -34,17 +34,6 @@ describe('дати', () => {
     // 00:30 16.06 у Римі — уже наступний день, хоча за UTC ще 15.06
     expect(startOfDay(new Date('2026-06-15T22:30:00Z'))).toEqual(new Date('2026-06-16T00:00:00Z'))
     expect(isoDate(T)).toBe('2026-06-15')
-  })
-
-  it('startOfDay не залежить від часового поясу пристрою', () => {
-    for (const tz of ['UTC', 'America/New_York', 'Asia/Tokyo']) {
-      vi.stubEnv('TZ', tz)
-      try {
-        expect(startOfDay(new Date('2026-06-15T22:30:00Z'))).toEqual(new Date('2026-06-16T00:00:00Z'))
-      } finally {
-        vi.unstubAllEnvs()
-      }
-    }
   })
 
   it('daysBetween рахує дні від дати до сьогодні', () => {

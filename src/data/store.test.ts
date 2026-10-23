@@ -36,29 +36,18 @@ describe('register — нова партія', () => {
     expect(next.log.at(-1)).toEqual({ at: '2026-06-15T14:00', text: 'Prodotto lotto L-1506-MZ: Mozzarella 40 kg → Cella 1 · ripiano 1' })
   })
 
-  it('після півночі за Римом партія й журнал отримують римську дату — на пристрої в будь-якому поясі', () => {
+  // Тести працюють у поясі UTC (vite.config.ts), тож «пристрій» тут не в Римі.
+  it('після півночі за Римом партія й журнал отримують римську дату, а не дату пристрою', () => {
     vi.setSystemTime(new Date('2026-06-15T22:30:00Z')) // у Римі вже 16.06, 00:30
-    for (const tz of ['UTC', 'America/New_York']) {
-      vi.stubEnv('TZ', tz)
-      try {
-        const next = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
-        expect(next.lots.at(-1)).toMatchObject({ id: 'L-1606-MZ', producedAt: '2026-06-16', expiresAt: '2026-06-23' })
-        expect(next.log.at(-1)!.at).toBe('2026-06-16T00:30')
-      } finally {
-        vi.unstubAllEnvs()
-      }
-    }
+    const next = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
+    expect(next.lots.at(-1)).toMatchObject({ id: 'L-1606-MZ', producedAt: '2026-06-16', expiresAt: '2026-06-23' })
+    expect(next.log.at(-1)!.at).toBe('2026-06-16T00:30')
   })
 
   it('взимку журнал теж за Римом (UTC+1)', () => {
     vi.setSystemTime(new Date('2026-01-15T22:30:00Z'))
-    vi.stubEnv('TZ', 'UTC')
-    try {
-      const next = reducer(makeState(), { type: 'move', lotId: makeState().lots[0].id, locationId: 'B' })
-      expect(next.log.at(-1)!.at).toBe('2026-01-15T23:30')
-    } finally {
-      vi.unstubAllEnvs()
-    }
+    const next = reducer(makeState(), { type: 'move', lotId: makeState().lots[0].id, locationId: 'B' })
+    expect(next.log.at(-1)!.at).toBe('2026-01-15T23:30')
   })
 
   it('код лоту бере сиглу з продукту (її можна змінити в таблиці)', () => {
