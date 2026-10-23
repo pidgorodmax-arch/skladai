@@ -135,6 +135,9 @@ th:last-child, td:last-child { padding-right: 0; }
 .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; background: var(--ground); border-radius: 8px; padding: 12px; font-size: 14px; }
 .summary-grid > :nth-child(even) { text-align: right; font-family: var(--mono); }
 
+footer.app-foot .foot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.save-error { position: sticky; top: 0; z-index: 60; background: var(--bad-bg); color: var(--bad-fg); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+
 footer.app-foot { max-width: 1360px; margin: 0 auto; padding: 8px 24px 32px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; color: var(--muted); font-size: 13px; }
 
 @media (max-width: 640px) {

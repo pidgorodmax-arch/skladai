@@ -5,6 +5,8 @@
 //
 // Де що лежить:
 //   source.ts   — DataSource: load() на старті, apply(action) на кожну зміну
+//   sheetsSource.ts — те саме для Google Таблиці (Apps Script)
+//   settings.ts — адреса таблиці й токен (лише в цьому браузері)
 //   reducer.ts  — дії (Action) і як вони змінюють стан
 //   persist.ts  — збереження в localStorage і читання з міграцією
 //   migrate.ts  — перетворення старих даних на поточну версію
@@ -12,22 +14,62 @@
 //   useToday.ts — «сьогодні» для селекторів
 
 import { useCallback, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react'
+import { browserStorage } from './persist'
 import { reducer, type Action } from './reducer'
+import { loadSettings, saveSettings, type SheetsSettings } from './settings'
+import { createSheetsSource, SheetsError } from './sheetsSource'
 import { createDemoSource, type DataSource } from './source'
 import type { AppState } from './types'
+import { ConnectionContext } from './useConnection'
 import { useToday } from './useToday'
 import { StoreContext } from './useStore'
 
 const demoSource = createDemoSource()
 
-type LoadStatus = { kind: 'loading' } | { kind: 'error' } | { kind: 'ready'; state: AppState; source: DataSource }
+/** Текст помилки для людини: наш SheetsError — як є, решта — загальний. */
+function errorText(err: unknown, fallback: string): string {
+  return err instanceof SheetsError ? err.message : fallback
+}
+
+/**
+ * Обирає джерело даних за налаштуваннями: є адреса таблиці — Google Sheets,
+ * немає — демо. Зміна налаштувань (сторінка Impostazioni) перемикає джерело,
+ * і StoreProvider завантажує дані заново.
+ */
+export function DataProvider({ children }: { children: ReactNode }) {
+  const [settings, setSettings] = useState<SheetsSettings | null>(() => loadSettings(browserStorage))
+  const source = useMemo(() => (settings ? createSheetsSource(settings) : demoSource), [settings])
+  const connection = useMemo(
+    () => ({
+      settings,
+      connect: (next: SheetsSettings) => {
+        saveSettings(browserStorage, next)
+        setSettings(next)
+      },
+      disconnect: () => {
+        saveSettings(browserStorage, null)
+        setSettings(null)
+      },
+    }),
+    [settings],
+  )
+  return (
+    <ConnectionContext.Provider value={connection}>
+      <StoreProvider source={source} onUseDemo={settings ? connection.disconnect : undefined}>
+        {children}
+      </StoreProvider>
+    </ConnectionContext.Provider>
+  )
+}
+
+type LoadStatus = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; state: AppState; source: DataSource }
 
 /**
  * `source` має бути сталим об'єктом (створеним поза рендером): нове джерело
  * означає нове завантаження. Якщо джерело змінилося (демо ↔ Sheets у 2.4),
  * дані попереднього не показуємо, а чекаємо load() нового.
  */
-export function StoreProvider({ source = demoSource, children }: { source?: DataSource; children: ReactNode }) {
+export function StoreProvider({ source = demoSource, onUseDemo, children }: { source?: DataSource; onUseDemo?: () => void; children: ReactNode }) {
   const [status, setStatus] = useState<LoadStatus>({ kind: 'loading' })
   const [attempt, setAttempt] = useState(0)
 
@@ -35,7 +77,7 @@ export function StoreProvider({ source = demoSource, children }: { source?: Data
     let active = true
     source.load().then(
       (state) => active && setStatus({ kind: 'ready', state, source }),
-      () => active && setStatus({ kind: 'error' }),
+      (err: unknown) => active && setStatus({ kind: 'error', message: errorText(err, 'Impossibile caricare i dati. Controlla la connessione.') }),
     )
     return () => {
       active = false
@@ -51,7 +93,7 @@ export function StoreProvider({ source = demoSource, children }: { source?: Data
         <p className="muted">Caricamento dei dati…</p>
       ) : (
         <>
-          <p>Impossibile caricare i dati. Controlla la connessione.</p>
+          <p role="alert">{status.message}</p>
           <button
             type="button"
             className="btn primary"
@@ -62,6 +104,11 @@ export function StoreProvider({ source = demoSource, children }: { source?: Data
           >
             Riprova
           </button>
+          {onUseDemo && (
+            <button type="button" className="btn" onClick={onUseDemo}>
+              Usa i dati demo
+            </button>
+          )}
         </>
       )}
     </main>
@@ -70,16 +117,35 @@ export function StoreProvider({ source = demoSource, children }: { source?: Data
 
 function LoadedStore({ initial, source, children }: { initial: AppState; source: DataSource; children: ReactNode }) {
   const [state, apply] = useReducer(reducer, initial)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const today = useToday()
   // Екран оновлюється одразу, а збереження йде в джерело паралельно.
-  // Що робити, коли зберегти не вдалося (немає мережі), — завдання 2.5.
+  // Якщо зберегти не вдалося — показуємо це, а не мовчимо: інакше працівник
+  // думає, що партія в таблиці. Черга для роботи без мережі — завдання 2.5.
   const dispatch = useCallback(
     (action: Action) => {
       apply(action)
-      source.apply(action).catch((err: unknown) => console.error('Salvataggio non riuscito', err))
+      source.apply(action).catch((err: unknown) => {
+        console.error('Salvataggio non riuscito', err)
+        setSaveError(errorText(err, 'Salvataggio non riuscito'))
+      })
     },
     [source],
   )
   const value = useMemo(() => ({ state, dispatch, today }), [state, dispatch, today])
-  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
+  return (
+    <StoreContext.Provider value={value}>
+      {saveError && (
+        <div className="save-error" role="alert">
+          <span>
+            <strong>Non salvato nella tabella:</strong> {saveError}. I dati sullo schermo potrebbero non corrispondere.
+          </span>
+          <button type="button" className="btn" onClick={() => window.location.reload()}>
+            Ricarica i dati
+          </button>
+        </div>
+      )}
+      {children}
+    </StoreContext.Provider>
+  )
 }
