@@ -9,6 +9,8 @@ import Settings from './pages/Settings'
 
 // 3D-сцена важка (Three.js) — вантажимо її лише коли відкривають карту.
 const Warehouse3D = lazy(() => import('./pages/Warehouse3D'))
+// Етикетки тягнуть бібліотеку QR — теж лише коли їх відкривають.
+const Labels = lazy(() => import('./pages/Labels'))
 
 function Logo() {
   return (
@@ -38,16 +40,18 @@ export default function App() {
             <NavLink to="/magazzino" className={link}>Magazzino 3D</NavLink>
             <NavLink to="/ordini" className={link}>Ordini</NavLink>
             <NavLink to="/registra" className={link}>Registra</NavLink>
+            <NavLink to="/etichette" className={link}>Etichette</NavLink>
           </nav>
         </div>
       </header>
 
-      <Suspense fallback={<div className="page muted">Caricamento della mappa 3D…</div>}>
+      <Suspense fallback={<div className="page muted">Caricamento…</div>}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/magazzino" element={<Warehouse3D />} />
           <Route path="/ordini" element={<Orders />} />
           <Route path="/registra" element={<Register />} />
+          <Route path="/etichette" element={<Labels />} />
           <Route path="/impostazioni" element={<Settings />} />
           <Route path="*" element={<Dashboard />} />
         </Routes>

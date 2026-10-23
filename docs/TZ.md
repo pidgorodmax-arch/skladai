@@ -179,7 +179,8 @@ Telegram. Ключі — лише в GitHub Secrets, ніколи у фронт�
 - [x] 2b.1 Модель коробок (`Box`, `Pick` у `types.ts` v4; партія = сума коробок — `lotQty`, `lotStock`; міграція v3→v4; демо з коробками)
 - [x] 2b.1a Вкладка `Colli` у таблиці й Apps Script (`Code.gs` v4; стара таблиця читається, при першому записі скрипт сам створює `Colli`)
 - [x] 2b.2 Дії `placeBox`, `moveBox`, `pick` (`reducer.ts`, Apps Script, вкладка `Prelievi`); «spedito» добирає незібране за FEFO з позначкою `automatico`; `Pick` v5: `lotId`, `method`; прогрес — `orderProgress`
-- [ ] Етап 2b — решта (2b.3–2b.8)
+- [x] 2b.3 Етикетки QR (`#/etichette`, `src/data/labels.ts`): колі й стелажі; A4 3×8 (70×37 мм), термо 62×40 і 100×50 мм. У QR — посилання `<адреса>#/scan?collo=<код>` / `?pos=<id>`; `parseQr` — для сканера 2b.4
+- [ ] Етап 2b — решта (2b.4–2b.8)
 - [ ] Етап 3
 - [ ] Етап 4
 - [ ] Етап 5
