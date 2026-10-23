@@ -189,6 +189,31 @@ export function agingSummary(state: AppState, today: Date) {
   return out
 }
 
+/** Усе, що друкується на етикетці коробки (2b.3). */
+export interface BoxLabel {
+  box: Box
+  lot: Lot
+  product: Product
+  location: Location | undefined
+  /** Номер коробки в партії й скільки їх усього: «collo 2/5». */
+  index: number
+  count: number
+}
+
+/** Етикетки коробок у порядку state.boxes; коробки без партії чи продукту пропускаються. */
+export function boxLabels(state: AppState): BoxLabel[] {
+  const pm = productMap(state)
+  const lm = locationMap(state)
+  const lots = new Map(state.lots.map((l) => [l.id, l]))
+  return state.boxes.flatMap((box) => {
+    const lot = lots.get(box.lotId)
+    const product = lot && pm[lot.productId]
+    if (!lot || !product) return []
+    const siblings = state.boxes.filter((b) => b.lotId === lot.id)
+    return [{ box, lot, product, location: lm[box.locationId], index: siblings.indexOf(box) + 1, count: siblings.length }]
+  })
+}
+
 /** Скільки зібрано під рядок замовлення (сканером і автоматично). */
 export function pickedQty(state: AppState, orderId: string, productId: string): number {
   return state.picks.filter((p) => p.orderId === orderId && p.productId === productId).reduce((s, p) => s + p.qty, 0)
