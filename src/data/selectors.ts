@@ -207,7 +207,11 @@ export function boxLabels(state: AppState): BoxLabel[] {
   const lots = new Map(state.lots.map((l) => [l.id, l]))
   // Коробки кожної партії — один прохід, а не фільтр на кожну коробку.
   const byLot = new Map<string, Box[]>()
-  for (const b of state.boxes) byLot.set(b.lotId, [...(byLot.get(b.lotId) ?? []), b])
+  for (const b of state.boxes) {
+    const list = byLot.get(b.lotId) ?? []
+    list.push(b)
+    byLot.set(b.lotId, list)
+  }
   return state.boxes.flatMap((box) => {
     const lot = lots.get(box.lotId)
     const product = lot && pm[lot.productId]
