@@ -89,13 +89,23 @@ export interface Box {
   qty: number
 }
 
+/**
+ * Як узяли товар під замовлення:
+ *   scansionato — працівник відсканував коробку й ввів кількість (pick);
+ *   automatico  — решту добрала система за FEFO під час «spedito».
+ */
+export type PickMethod = 'scansionato' | 'automatico'
+
 /** Взято з коробки під замовлення (збирання, етап 2b.2). Основа простежуваності. */
 export interface Pick {
   orderId: string
   productId: string
   boxId: string
+  /** Партія коробки: порожня коробка зникає, а лот для HACCP має лишитись. */
+  lotId: string
   qty: number
   at: string // «РРРР-ММ-ДДTгг:хх» за Римом
+  method: PickMethod
 }
 
 export interface OrderLine {
@@ -118,7 +128,7 @@ export interface Order {
  * Версія формату даних. Збільшуй її, коли змінюєш AppState так, що старі
  * збережені дані вже не підходять, і додай крок у MIGRATIONS (migrate.ts).
  */
-export const STATE_VERSION = 4
+export const STATE_VERSION = 5
 
 export interface AppState {
   version: typeof STATE_VERSION

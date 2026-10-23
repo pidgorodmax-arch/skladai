@@ -71,6 +71,22 @@ export const MIGRATIONS: Record<number, Migration> = {
     })
     return { ...old, version: 4, lots, boxes, picks: [] }
   },
+  // v5 (2b.2): у збирання з'явились партія (`lotId`) і спосіб (`method`).
+  // Дій збирання до v5 не було, тож список зазвичай порожній; про всяк
+  // випадок лот беремо з коробки, а спосіб — «scansionato».
+  4: (old) => {
+    const boxes = Array.isArray(old.boxes) ? old.boxes.filter(isRecord) : []
+    const lotOf = (boxId: unknown) => String(boxes.find((b) => b.id === boxId)?.lotId ?? '')
+    return {
+      ...old,
+      version: 5,
+      picks: Array.isArray(old.picks)
+        ? old.picks.map((p: unknown) =>
+            isRecord(p) ? { ...p, lotId: typeof p.lotId === 'string' ? p.lotId : lotOf(p.boxId), method: p.method ?? 'scansionato' } : p,
+          )
+        : old.picks,
+    }
+  },
 }
 
 /** Застосовує кроки по черзі до версії `target`. null — якщо дійти не можна. */

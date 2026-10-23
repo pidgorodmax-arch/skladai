@@ -10,6 +10,11 @@ import { STATE_VERSION } from './types'
  * Стан у форматі v3 (до 2b.1): кількість і стелаж у самій партії, без коробок.
  * Саме такий стан і досі віддає Apps Script.
  */
+/** Стан у форматі v4 (до 2b.2): Pick без lotId і method. */
+function v4State(picks: Record<string, unknown>[] = []): Record<string, unknown> {
+  return { ...makeState(), version: 4, picks }
+}
+
 function v3State(): Record<string, unknown> {
   const { boxes: _boxes, picks: _picks, ...state } = makeState()
   return {
@@ -150,6 +155,23 @@ describe('v3 → v4: коробки (2b.1)', () => {
   it('без списку партій — null, а не падіння', () => {
     const { lots: _lots, ...broken } = v3State()
     expect(migrate(broken)).toBeNull()
+  })
+})
+
+describe('v4 → v5: лот і спосіб у збиранні (2b.2)', () => {
+  it('порожній список збирань лишається порожнім, решта не змінюється', () => {
+    expect(migrate(v4State())).toEqual(makeState())
+  })
+
+  it('старий Pick отримує лот своєї коробки і спосіб «scansionato»', () => {
+    const migrated = migrate(v4State([{ orderId: 'O1', productId: 'mozzarella', boxId: 'MZ-1-1', qty: 2, at: '2026-06-15T08:00' }]))!
+    expect(migrated.picks).toEqual([
+      { orderId: 'O1', productId: 'mozzarella', boxId: 'MZ-1-1', lotId: 'MZ-1', qty: 2, at: '2026-06-15T08:00', method: 'scansionato' },
+    ])
+  })
+
+  it('ланцюжок v3 → v5 працює', () => {
+    expect(migrate(v3State())).toEqual(makeState())
   })
 })
 
