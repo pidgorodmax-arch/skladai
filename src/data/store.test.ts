@@ -35,6 +35,17 @@ describe('register — нова партія', () => {
     expect(next.log.at(-1)).toEqual({ at: '2026-06-15T12:00', text: 'Prodotto lotto L-1506-MZ: Mozzarella 40 kg → Cella 1 · ripiano 1' })
   })
 
+  it('після півночі за італійським часом партія отримує сьогоднішню дату, а не вчорашню (UTC)', () => {
+    vi.stubEnv('TZ', 'Europe/Rome')
+    vi.setSystemTime(new Date('2026-06-15T22:30:00Z')) // у Римі вже 16.06, 00:30
+    try {
+      const next = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
+      expect(next.lots.at(-1)).toMatchObject({ id: 'L-1606-MZ', producedAt: '2026-06-16', expiresAt: '2026-06-23' })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('Montasio отримує термін null (витримка)', () => {
     const next = reducer(makeState(), { type: 'register', productId: 'montasio', qty: 12, locationId: 'B' })
     expect(next.lots.at(-1)!.expiresAt).toBeNull()
