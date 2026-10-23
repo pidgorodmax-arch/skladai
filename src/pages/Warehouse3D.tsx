@@ -454,7 +454,7 @@ export default function Warehouse3D() {
                         onSubmit={(e) => {
                           e.preventDefault()
                           const q = Number(shipping.qty.replace(',', '.'))
-                          if (q > 0) dispatch({ type: 'ship', lotId: lot.id, qty: q, code: lot.code })
+                          if (q > 0) dispatch({ type: 'ship', lotId: lot.id, qty: q, code: lot.code, from: selected.id })
                           setShipping(null)
                         }}
                       >
@@ -476,7 +476,7 @@ export default function Warehouse3D() {
                         <select
                           id={`m-${lot.id}`}
                           value=""
-                          onChange={(e) => e.target.value && dispatch({ type: 'move', lotId: lot.id, locationId: e.target.value, code: lot.code })}
+                          onChange={(e) => e.target.value && dispatch({ type: 'move', lotId: lot.id, locationId: e.target.value, code: lot.code, from: selected.id })}
                           style={{ minHeight: 36, borderRadius: 8, border: '1px solid var(--field)', background: 'var(--card)', padding: '0 6px', fontSize: 14, maxWidth: 110 }}
                         >
                           <option value="">Sposta…</option>

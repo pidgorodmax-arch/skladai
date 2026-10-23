@@ -99,6 +99,7 @@ export function toSheets(state: AppState, columns: Columns): Record<string, Fake
     Posizioni: table('Posizioni', rec(state.locations)),
     Lotti: table('Lotti', rec(state.lots)),
     Colli: table('Colli', rec(state.boxes)),
+    Prelievi: table('Prelievi', rec(state.picks)),
     Ordini: table('Ordini', rec(orderRows)),
     Registro: table('Registro', rec(state.log)),
   }
@@ -109,7 +110,7 @@ export function toSheets(state: AppState, columns: Columns): Record<string, Fake
  * Lotti (на одну партію — один стелаж).
  */
 export function toLegacySheets(state: AppState, columns: Columns): Record<string, FakeSheet> {
-  const { Colli: _colli, ...sheets } = toSheets(state, columns)
+  const { Colli: _colli, Prelievi: _prelievi, ...sheets } = toSheets(state, columns)
   const lotti: Columns = { Lotti: [...columns.Lotti, ['quantita', 'qty', 'num'], ['posizione', 'locationId', 'text']] }
   return { ...sheets, Lotti: toSheets({ ...state, lots: lotStock(state) }, { ...columns, ...lotti }).Lotti }
 }

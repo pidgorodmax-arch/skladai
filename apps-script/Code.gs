@@ -1,8 +1,9 @@
-// SkladAI — Apps Script для Google Таблиці клієнта (завдання 2.3; коробки — 2b.1a).
+// SkladAI — Apps Script для Google Таблиці клієнта (завдання 2.3; коробки — 2b.1a; збирання — 2b.2).
 //
 // Що робить:
 //   doGet  — читає всі вкладки й повертає дані у форматі застосунку (AppState).
-//   doPost — застосовує одну дію (register, move, ship, orderStatus) так само,
+//   doPost — застосовує одну дію (register, move, ship, placeBox, moveBox,
+//            pick, orderStatus) так само,
 //            як reducer застосунку (src/data/reducer.ts), і пише в Registro.
 // Структура таблиці — docs/sheets.md. Розгортання — apps-script/README.md.
 //
@@ -14,7 +15,7 @@
 // Безпека: доступ лише з токеном. Токен зберігається у властивостях скрипта
 // (Impostazioni progetto → Proprietà script → TOKEN), не в коді й не в таблиці.
 
-var STATE_VERSION = 4
+var STATE_VERSION = 5
 var TIME_ZONE = 'Europe/Rome'
 
 // Колонки кожної вкладки: [назва в таблиці, поле в застосунку, тип].
@@ -72,6 +73,17 @@ var COLUMNS = {
     ['lotto', 'lotId', 'text'],
     ['posizione', 'locationId', 'text'],
     ['quantita', 'qty', 'num'],
+  ],
+  // Збирання (2b.2): що, з якої коробки й під яке замовлення взяли. Лише дописується.
+  // modo: scansionato — відскановано на телефоні; automatico — добрано за FEFO при «spedito».
+  Prelievi: [
+    ['ordine', 'orderId', 'text'],
+    ['prodotto', 'productId', 'text'],
+    ['collo', 'boxId', 'text'],
+    ['lotto', 'lotId', 'text'],
+    ['quantita', 'qty', 'num'],
+    ['data_ora', 'at', 'datetime'],
+    ['modo', 'method', 'text'],
   ],
   // Один рядок = одна позиція замовлення; рядки з однаковим id — одне замовлення.
   Ordini: [
@@ -237,8 +249,11 @@ function toField(v, type, sheetName, colName, rowNumber) {
 function loadTables() {
   var t = {}
   var hasColli = !!SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Colli')
+  // Вкладки Prelievi може ще не бути: тоді збирань немає, її створить перший запис (ensurePrelievi).
+  if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Prelievi')) t.Prelievi = { rows: [], missing: true }
   Object.keys(COLUMNS).forEach(function (name) {
     if (name === 'Colli' && !hasColli) return
+    if (name === 'Prelievi' && t.Prelievi) return
     t[name] = readTable(name, name === 'Lotti' && !hasColli ? LEGACY_LOTTI : undefined)
   })
   if (!hasColli) {
@@ -260,6 +275,13 @@ function loadTables() {
 /** Як firstBoxId у seed.ts: перша коробка партії — `<id партії>-1`. */
 function firstBoxId(lotId) {
   return lotId + '-1'
+}
+
+/** Як nextBoxId у seed.ts: `<id партії>-2`, `-3`, … — перший вільний. */
+function nextBoxId(lotId, existing) {
+  var n = 2
+  while (existing.indexOf(lotId + '-' + n) !== -1) n++
+  return lotId + '-' + n
 }
 
 function datas(table) {
@@ -290,8 +312,7 @@ function loadState() {
     locations: datas(t.Posizioni),
     lots: datas(t.Lotti),
     boxes: datas(t.Colli),
-    // Збирання (Pick) з'являться у 2b.2 — поки порожньо.
-    picks: [],
+    picks: datas(t.Prelievi),
     orders: groupOrders(t.Ordini.rows),
     log: datas(t.Registro),
   }
@@ -372,16 +393,17 @@ function deleteRows(table, rows) {
   rows.sort(function (a, b) { return b - a }).forEach(function (row) { table.sheet.deleteRow(row) })
 }
 
-/** Коробки партії в порядку рядків Colli. */
-function boxesOf(t, lotId) {
-  return t.Colli.rows.filter(function (r) { return r.data.lotId === lotId })
+/** Коробки партії в порядку рядків Colli; з `from` — лише на цьому стелажі. */
+function boxesOf(t, lotId, from) {
+  return t.Colli.rows.filter(function (r) { return r.data.lotId === lotId && (!from || r.data.locationId === from) })
 }
 
 /**
  * Бере qty з коробок `from` по черзі, як takeFromBoxes у reducer. Змінені
- * коробки додає в `changed`. Повертає, скільки вдалося взяти.
+ * коробки додає в `changed`, а скільки з якої взяли — у `parts` (якщо є).
+ * Повертає, скільки вдалося взяти.
  */
-function takeFromBoxes(from, qty, changed) {
+function takeFromBoxes(from, qty, changed, parts) {
   var left = qty
   from.forEach(function (b) {
     if (left <= 0) return
@@ -390,8 +412,26 @@ function takeFromBoxes(from, qty, changed) {
     left -= take
     b.data.qty -= take
     if (changed.indexOf(b) === -1) changed.push(b)
+    if (parts) parts.push({ box: b.data, qty: take })
   })
   return qty - left
+}
+
+/** Вкладки Prelievi ще немає — створюємо її з заголовком (перше збирання). */
+function ensurePrelievi(t) {
+  if (!t.Prelievi.missing) return
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('Prelievi')
+  var header = COLUMNS.Prelievi.map(function (c) { return c[0] })
+  sheet.getRange(1, 1, 1, header.length).setValues([header])
+  t.Prelievi = readTable('Prelievi')
+}
+
+function writePick(t, p) {
+  ensurePrelievi(t)
+  appendRow(t.Prelievi, {
+    ordine: p.orderId, prodotto: p.productId, collo: p.boxId, lotto: p.lotId,
+    quantita: p.qty, data_ora: p.at, modo: p.method,
+  })
 }
 
 /**
@@ -459,6 +499,9 @@ function applyAction(action) {
     case 'register': return register(t, action, now)
     case 'ship': return ship(t, action, now)
     case 'move': return move(t, action, now)
+    case 'placeBox': return placeBox(t, action, now)
+    case 'moveBox': return moveBox(t, action, now)
+    case 'pick': return pick(t, action, now)
     case 'orderStatus': return orderStatus(t, action, now)
     default: fail('rejected', 'Azione sconosciuta: ' + action.type)
   }
@@ -502,7 +545,7 @@ function ship(t, a, now) {
   var lot = findRow(t.Lotti, a.lotId)
   if (!lot) fail('rejected', 'Lotto sconosciuto: ' + lotLabel(a))
   var changed = []
-  var taken = takeFromBoxes(boxesOf(t, lot.data.id), positive(a.qty, 'Quantità non valida'), changed)
+  var taken = takeFromBoxes(boxesOf(t, lot.data.id, a.from), positive(a.qty, 'Quantità non valida'), changed)
   saveBoxes(t, changed)
   writeLog(t, now, 'Uscita ' + taken + ' dal lotto ' + lot.data.code)
 }
@@ -512,9 +555,73 @@ function move(t, a, now) {
   var to = findRow(t.Posizioni, a.locationId)
   if (!lot) fail('rejected', 'Lotto sconosciuto: ' + lotLabel(a))
   if (!to) fail('rejected', 'Posizione sconosciuta: ' + a.locationId)
-  // Уся партія переїжджає разом з усіма коробками; окрема коробка — moveBox (2b.2).
-  boxesOf(t, lot.data.id).forEach(function (b) { setCell(t.Colli, b.row, 'posizione', to.data.id) })
+  // Усі коробки партії (або лише ті, що на стелажі from); одна коробка — moveBox.
+  boxesOf(t, lot.data.id, a.from).forEach(function (b) { setCell(t.Colli, b.row, 'posizione', to.data.id) })
   writeLog(t, now, 'Lotto ' + lot.data.code + ' spostato in ' + to.data.name)
+}
+
+function placeBox(t, a, now) {
+  if (a.boxId != null && !(typeof a.boxId === 'string' && LOT_ID.test(a.boxId))) fail('rejected', 'Codice collo non valido')
+  // Коробка з цим кодом уже є — це повтор тієї самої дії. Перевіряємо першим:
+  // вихідна коробка могла вже спорожніти.
+  if (a.boxId && findRow(t.Colli, a.boxId)) return
+  var from = findRow(t.Colli, a.fromBoxId)
+  var to = findRow(t.Posizioni, a.locationId)
+  if (!from) fail('rejected', 'Collo sconosciuto: ' + a.fromBoxId)
+  if (!to) fail('rejected', 'Posizione sconosciuta: ' + a.locationId)
+  var qty = positive(a.qty, 'Quantità non valida')
+  if (qty > from.data.qty) fail('rejected', 'Nel collo ci sono solo ' + from.data.qty)
+  var lot = findRow(t.Lotti, from.data.lotId)
+  var product = lot && findRow(t.Prodotti, lot.data.productId)
+  if (!lot || !product) fail('rejected', 'Lotto sconosciuto: ' + from.data.lotId)
+  var id = a.boxId || nextBoxId(lot.data.id, t.Colli.rows.map(function (r) { return r.data.id }))
+  from.data.qty -= qty
+  // Партію не видаляємо: її товар переходить у нову коробку.
+  if (from.data.qty > 0) setCell(t.Colli, from.row, 'quantita', from.data.qty)
+  else deleteRows(t.Colli, [from.row])
+  appendRow(t.Colli, { id: id, lotto: lot.data.id, posizione: to.data.id, quantita: qty })
+  writeLog(t, now, 'Nuovo collo dal lotto ' + lot.data.code + ': ' + product.data.name + ' ' + qty + ' ' + product.data.unit + ' → ' + to.data.name)
+}
+
+function moveBox(t, a, now) {
+  var box = findRow(t.Colli, a.boxId)
+  var to = findRow(t.Posizioni, a.locationId)
+  if (!box) fail('rejected', 'Collo sconosciuto: ' + a.boxId)
+  if (!to) fail('rejected', 'Posizione sconosciuta: ' + a.locationId)
+  if (box.data.locationId === to.data.id) return
+  var lot = findRow(t.Lotti, box.data.lotId)
+  setCell(t.Colli, box.row, 'posizione', to.data.id)
+  writeLog(t, now, 'Collo del lotto ' + (lot ? lot.data.code : box.data.lotId) + ' (' + box.data.qty + ') spostato in ' + to.data.name)
+}
+
+function pick(t, a, now) {
+  var orderRows = t.Ordini.rows.filter(function (r) { return r.data.id === a.orderId })
+  if (!orderRows.length) fail('rejected', 'Ordine sconosciuto: ' + a.orderId)
+  var order = groupOrders(orderRows)[0]
+  if (order.status === 'spedito') fail('rejected', 'Ordine ' + order.id + ' già spedito')
+  var box = findRow(t.Colli, a.boxId)
+  if (!box) fail('rejected', 'Collo sconosciuto: ' + a.boxId)
+  var lot = findRow(t.Lotti, box.data.lotId)
+  var product = lot && findRow(t.Prodotti, lot.data.productId)
+  if (!lot || !product) fail('rejected', 'Lotto sconosciuto: ' + box.data.lotId)
+  var inOrder = order.lines.some(function (l) { return l.productId === product.data.id })
+  if (!inOrder) fail('rejected', product.data.name + ' non è nell\'ordine ' + order.id)
+  var qty = positive(a.qty, 'Quantità non valida')
+  // Не можна взяти більше, ніж у коробці. Більше, ніж замовлено, — можна (вага «плаває»).
+  if (qty > box.data.qty) fail('rejected', 'Nel collo ci sono solo ' + box.data.qty)
+  box.data.qty -= qty
+  saveBoxes(t, [box])
+  writePick(t, { orderId: order.id, productId: product.data.id, boxId: box.data.id, lotId: lot.data.id, qty: qty, at: now, method: 'scansionato' })
+  // Почали збирати — замовлення вже «in preparazione».
+  if (order.status === 'nuovo') orderRows.forEach(function (r) { setCell(t.Ordini, r.row, 'stato', 'in_preparazione') })
+  writeLog(t, now, 'Prelievo ' + qty + ' ' + product.data.unit + ' ' + product.data.name + ' dal lotto ' + lot.data.code + ' per ordine ' + order.id)
+}
+
+/** Скільки вже зібрано під рядок замовлення (усі способи). */
+function pickedQty(t, orderId, productId) {
+  return t.Prelievi.rows.reduce(function (s, r) {
+    return r.data.orderId === orderId && r.data.productId === productId ? s + r.data.qty : s
+  }, 0)
 }
 
 function orderStatus(t, a, now) {
@@ -526,21 +633,31 @@ function orderStatus(t, a, now) {
   // «Spedito» остаточний: товар уже списано. Повернення — окрема дія (reso, етап 5).
   if (order.status === 'spedito') fail('rejected', 'Ordine ' + order.id + ' già spedito')
   if (a.status === 'spedito') {
-    // FEFO: спершу коробки партій, що раніше спливають (для витримки — найстаріші).
+    // Зібране сканером уже списано. Решту рядка добираємо за FEFO — спершу
+    // коробки партій, що раніше спливають (для витримки — найстаріші), — і
+    // пишемо в Prelievi з modo «automatico».
     var changed = []
+    var parts = []
     var fefo = t.Lotti.rows.slice().sort(function (x, y) {
       var a1 = x.data.expiresAt || x.data.producedAt
       var b1 = y.data.expiresAt || y.data.producedAt
       return a1 < b1 ? -1 : a1 > b1 ? 1 : 0
     })
     order.lines.forEach(function (line) {
+      var left = line.qty - pickedQty(t, order.id, line.productId)
+      if (left <= 0) return
       var from = []
       fefo.forEach(function (l) {
         if (l.data.productId === line.productId) from = from.concat(boxesOf(t, l.data.id))
       })
-      takeFromBoxes(from, line.qty, changed)
+      var lineParts = []
+      takeFromBoxes(from, left, changed, lineParts)
+      lineParts.forEach(function (p) { parts.push({ productId: line.productId, box: p.box, qty: p.qty }) })
     })
     saveBoxes(t, changed)
+    parts.forEach(function (p) {
+      writePick(t, { orderId: order.id, productId: p.productId, boxId: p.box.id, lotId: p.box.lotId, qty: p.qty, at: now, method: 'automatico' })
+    })
     writeLog(t, now, 'Spedito ordine ' + order.id + ' a ' + order.client)
   }
   orderRows.forEach(function (r) { setCell(t.Ordini, r.row, 'stato', a.status) })

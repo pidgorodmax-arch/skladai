@@ -16,6 +16,7 @@ import {
   lotsAt,
   occupancy,
   openOrders,
+  orderProgress,
   orderCoverage,
   productionPlan,
   startOfDay,
@@ -161,6 +162,52 @@ describe('коробки (2b.1): партія = сума коробок', () => 
     state.boxes.push({ id: 'ORPHAN-1', lotId: 'ORPHAN', locationId: 'C', qty: 99 })
     expect(stockByProduct(state)).toEqual(stockByProduct(makeState()))
     expect(expiringLots(state, T).map((l) => l.id)).not.toContain('EMPTY')
+  })
+})
+
+describe('прогрес збирання (2b.2)', () => {
+  it('orderProgress: «зібрано X з Y» по кожному рядку, сумуючи всі Pick', () => {
+    const state = makeState()
+    state.picks = [
+      { orderId: 'O1', productId: 'mozzarella', boxId: 'MZ-1-1', lotId: 'MZ-1', qty: 10, at: '2026-06-15T08:00', method: 'scansionato' },
+      { orderId: 'O1', productId: 'mozzarella', boxId: 'MZ-2-1', lotId: 'MZ-2', qty: 5, at: '2026-06-15T08:05', method: 'scansionato' },
+      { orderId: 'O2', productId: 'mozzarella', boxId: 'MZ-1-1', lotId: 'MZ-1', qty: 3, at: '2026-06-15T08:10', method: 'scansionato' },
+    ]
+    expect(orderProgress(state, 'O1')).toEqual([
+      { productId: 'mozzarella', ordered: 50, picked: 15 },
+      { productId: 'montasio', ordered: 5, picked: 0 },
+    ])
+    expect(orderProgress(state, 'немає')).toEqual([])
+  })
+})
+
+describe('зібране не рахується двічі (2b.2)', () => {
+  /** O2 (10 кг моцарели), зібрано повністю: зі складу вже списано 10. */
+  function pickedO2() {
+    const state = makeState()
+    state.boxes = state.boxes.map((b) => (b.id === 'MZ-1-1' ? { ...b, qty: 10 } : b))
+    state.picks = [{ orderId: 'O2', productId: 'mozzarella', boxId: 'MZ-1-1', lotId: 'MZ-1', qty: 10, at: '2026-06-15T08:00', method: 'scansionato' }]
+    return state
+  }
+
+  it('повністю зібране замовлення покрите, навіть якщо складу вже немає', () => {
+    const state = pickedO2()
+    state.boxes = state.boxes.filter((b) => !b.lotId.startsWith('MZ'))
+    expect(orderCoverage(state, 'O2')).toBe(true)
+  })
+
+  it('зібране не збільшує «da produrre» у плані', () => {
+    const before = productionPlan(makeState(), T).find((r) => r.product.id === 'mozzarella')!
+    const after = productionPlan(pickedO2(), T).find((r) => r.product.id === 'mozzarella')!
+    expect(after).toMatchObject({ ordered: before.ordered, picked: 10, stock: before.stock - 10, todo: before.todo })
+  })
+
+  it('зібране понад рядок не зменшує потребу інших замовлень', () => {
+    const state = pickedO2()
+    state.picks[0] = { ...state.picks[0], qty: 12 }
+    state.boxes = state.boxes.map((b) => (b.id === 'MZ-1-1' ? { ...b, qty: 8 } : b))
+    const plan = productionPlan(state, T).find((r) => r.product.id === 'mozzarella')!
+    expect(plan.picked).toBe(10)
   })
 })
 

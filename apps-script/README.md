@@ -133,9 +133,12 @@ curl -sL "$URL?token=sbagliato"
 | `type` | Поля | Що робить у таблиці |
 |---|---|---|
 | `register` | `productId`, `qty`, `locationId`, `milkLitres?`, `lotId?`, `code?` | Новий рядок у `Lotti` і коробка `<id>-1` у `Colli`. `lotId` — внутрішній ID, створений телефоном (партію з таким ID вдруге не створює). `code` — код, який бачила людина; якщо його вже зайняла інша партія — наступний вільний (`…MZ2`). Дата за Римом, термін = дата + `giorni_scadenza` |
-| `move` | `lotId`, `locationId`, `code?` | Міняє `posizione` в усіх коробках (`Colli`) партії з **ID** `lotId` (`code` — лише для повідомлень) |
-| `ship` | `lotId`, `qty`, `code?` | Бере `qty` з коробок партії з **ID** `lotId` по черзі; порожня коробка зникає, партія без коробок — теж |
-| `orderStatus` | `orderId`, `status` (`nuovo` / `in_preparazione` / `spedito`) | Міняє `stato` в усіх рядках замовлення; `spedito` списує коробки (`Colli`) за FEFO і остаточний |
+| `move` | `lotId`, `locationId`, `code?`, `from?` | Міняє `posizione` в усіх коробках (`Colli`) партії з **ID** `lotId`, з `from` — лише на цьому стелажі (`code` — лише для повідомлень) |
+| `ship` | `lotId`, `qty`, `code?`, `from?` | Бере `qty` з коробок партії з **ID** `lotId` по черзі (з `from` — лише з коробок на цьому стелажі); порожня коробка зникає, партія без коробок — теж |
+| `placeBox` | `fromBoxId`, `qty`, `locationId`, `boxId?` | Нова коробка: відділяє `qty` від коробки `fromBoxId` (не більше, ніж у ній) і ставить на `locationId`. `boxId` — код етикетки (дає телефон; без нього — `<партія>-2`, `-3`…). Повтор з тим самим `boxId` нічого не робить |
+| `moveBox` | `boxId`, `locationId` | Міняє `posizione` однієї коробки |
+| `pick` | `orderId`, `boxId`, `qty` | Збирання: зменшує коробку (не більше, ніж у ній; продукт має бути в замовленні; більше, ніж замовлено, — можна, бо вага упаковок «плаває»), дописує рядок у `Prelievi` з `modo` = `scansionato`; `nuovo` → `in_preparazione` |
+| `orderStatus` | `orderId`, `status` (`nuovo` / `in_preparazione` / `spedito`) | Міняє `stato` в усіх рядках замовлення; `spedito` добирає незібране з коробок за FEFO (рядки `Prelievi` з `modo` = `automatico`) і остаточний |
 
 Кожна дія, крім зміни статусу без відвантаження, дописує рядок у
 `Registro`. Одночасні записи з кількох телефонів виконуються по черзі

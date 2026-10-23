@@ -82,6 +82,9 @@ function describe(action: Action): string {
     case 'register': return `Lotto di ${action.productId}`
     case 'ship': return `Uscita dal lotto ${action.code ?? action.lotId}`
     case 'move': return `Spostamento del lotto ${action.code ?? action.lotId}`
+    case 'placeBox': return 'Nuovo collo'
+    case 'moveBox': return 'Spostamento del collo'
+    case 'pick': return `Prelievo per ordine ${action.orderId}`
     case 'orderStatus': return `Ordine ${action.orderId}`
     default: return 'Operazione'
   }

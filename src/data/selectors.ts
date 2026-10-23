@@ -135,6 +135,8 @@ export function openOrders(state: AppState, today: Date, withinDays = 7) {
 export interface PlanRow {
   product: Product
   ordered: number
+  /** Уже зібрано під ці замовлення: воно вже не на складі, але й робити його не треба. */
+  picked: number
   stock: number
   todo: number
   firstDue: string | null
@@ -144,10 +146,13 @@ export interface PlanRow {
 export function productionPlan(state: AppState, today: Date): PlanRow[] {
   const stock = stockByProduct(state)
   const ordered: Record<string, number> = {}
+  const picked: Record<string, number> = {}
   const firstDue: Record<string, string> = {}
   for (const o of openOrders(state, today)) {
     for (const line of o.lines) {
       ordered[line.productId] = (ordered[line.productId] ?? 0) + line.qty
+      // Зібране понад рядок (вага «плаває») не зменшує потребу інших замовлень.
+      picked[line.productId] = (picked[line.productId] ?? 0) + Math.min(line.qty, pickedQty(state, o.id, line.productId))
       if (!firstDue[line.productId] || o.due < firstDue[line.productId]) firstDue[line.productId] = o.due
     }
   }
@@ -156,8 +161,9 @@ export function productionPlan(state: AppState, today: Date): PlanRow[] {
     .map((p) => ({
       product: p,
       ordered: ordered[p.id],
+      picked: picked[p.id] ?? 0,
       stock: stock[p.id] ?? 0,
-      todo: Math.max(0, ordered[p.id] - (stock[p.id] ?? 0)),
+      todo: Math.max(0, ordered[p.id] - (picked[p.id] ?? 0) - (stock[p.id] ?? 0)),
       firstDue: firstDue[p.id] ?? null,
     }))
     .sort((a, b) => b.todo - a.todo)
@@ -183,10 +189,29 @@ export function agingSummary(state: AppState, today: Date) {
   return out
 }
 
+/** Скільки зібрано під рядок замовлення (сканером і автоматично). */
+export function pickedQty(state: AppState, orderId: string, productId: string): number {
+  return state.picks.filter((p) => p.orderId === orderId && p.productId === productId).reduce((s, p) => s + p.qty, 0)
+}
+
+export interface PickProgress {
+  productId: string
+  ordered: number
+  picked: number
+}
+
+/** Прогрес збирання замовлення: по рядку «зібрано X з Y». */
+export function orderProgress(state: AppState, orderId: string): PickProgress[] {
+  const order = state.orders.find((o) => o.id === orderId)
+  if (!order) return []
+  return order.lines.map((line) => ({ productId: line.productId, ordered: line.qty, picked: pickedQty(state, order.id, line.productId) }))
+}
+
 /** Чи вистачає складу, щоб закрити замовлення (для статусу в таблиці). */
 export function orderCoverage(state: AppState, orderId: string): boolean {
   const order = state.orders.find((o) => o.id === orderId)
   if (!order) return false
   const stock = stockByProduct(state)
-  return order.lines.every((line) => (stock[line.productId] ?? 0) >= line.qty)
+  // Зібране вже списано зі складу — порівнюємо склад лише з незібраною рештою.
+  return order.lines.every((line) => (stock[line.productId] ?? 0) >= line.qty - pickedQty(state, order.id, line.productId))
 }
