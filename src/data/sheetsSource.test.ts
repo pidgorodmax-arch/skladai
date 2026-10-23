@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { COLUMNS, TOKEN, loadScript, toSheets, type FakeSheet } from './fakeAppsScript'
 import { reducer } from './reducer'
-import { createSheetsSource, SheetsError, testConnection, type FetchLike } from './sheetsSource'
+import { createSheetsSource, SheetsError, testConnection, type FetchLike, type SheetsErrorCode } from './sheetsSource'
 import { TEST_NOW, makeState } from './testState'
 
 const URL_EXEC = 'https://script.google.com/macros/s/prova/exec'
@@ -60,19 +60,23 @@ describe('SheetsSource: load', () => {
 
   it('неправильний токен → зрозуміла помилка', async () => {
     const { fetchFn } = fakeGoogle()
-    await expect(createSheetsSource({ ...settings, token: 'sbagliato' }, fetchFn).load()).rejects.toEqual(new SheetsError('Token non valido'))
+    await expect(createSheetsSource({ ...settings, token: 'sbagliato' }, fetchFn).load()).rejects.toEqual(new SheetsError('Token non valido', 'auth'))
   })
 
   it('немає мережі, помилка HTTP, сторінка замість JSON, чужий формат — помилки італійською', async () => {
     const reply = (r: Awaited<ReturnType<FetchLike>>): FetchLike => async () => r
-    const cases: [FetchLike, string][] = [
-      [async () => Promise.reject(new TypeError('Failed to fetch')), 'Tabella non raggiungibile: controlla la connessione'],
-      [reply({ ok: false, status: 500, json: async () => ({}) }), 'La tabella ha risposto con errore 500'],
-      [reply({ ok: true, status: 200, json: async () => Promise.reject(new SyntaxError('<html>')) }), "Risposta non valida: controlla l'indirizzo dello script"],
-      [reply({ ok: true, status: 200, json: async () => ({ ok: true, state: { version: 2, lots: [] } }) }), 'I dati della tabella non sono nel formato previsto'],
+    const cases: [FetchLike, string, SheetsErrorCode][] = [
+      [async () => Promise.reject(new TypeError('Failed to fetch')), 'Tabella non raggiungibile: controlla la connessione', 'network'],
+      [reply({ ok: false, status: 500, json: async () => ({}) }), 'La tabella ha risposto con errore 500', 'network'],
+      [reply({ ok: false, status: 404, json: async () => ({}) }), 'La tabella ha risposto con errore 404', 'config'],
+      [reply({ ok: true, status: 200, json: async () => Promise.reject(new SyntaxError('<html>')) }), "Risposta non valida: controlla l'indirizzo dello script", 'network'],
+      [reply({ ok: true, status: 200, json: async () => ({ ok: true, state: { version: 2, lots: [] } }) }), 'I dati della tabella non sono nel formato previsto', 'config'],
+      [reply({ ok: true, status: 200, json: async () => ({ ok: false, error: 'Lock timeout' }) }), 'Lock timeout', 'error'],
     ]
-    for (const [fetchFn, message] of cases) {
-      await expect(createSheetsSource(settings, fetchFn).load()).rejects.toEqual(new SheetsError(message))
+    for (const [fetchFn, message, code] of cases) {
+      const err = await createSheetsSource(settings, fetchFn).load().catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(SheetsError)
+      expect(err).toMatchObject({ message, code })
     }
   })
 
@@ -103,7 +107,7 @@ describe('SheetsSource: apply', () => {
   it('відмова таблиці → помилка з причиною', async () => {
     const { fetchFn } = fakeGoogle()
     await expect(createSheetsSource(settings, fetchFn).apply({ type: 'move', lotId: 'MZ-1', locationId: 'Z9' })).rejects.toEqual(
-      new SheetsError('Posizione sconosciuta: Z9'),
+      new SheetsError('Posizione sconosciuta: Z9', 'rejected'),
     )
   })
 
@@ -137,7 +141,7 @@ describe('SheetsSource: apply', () => {
     const source = createSheetsSource(settings, fetchFn)
     const bad = source.apply({ type: 'ship', lotId: 'nessuno', qty: 1 })
     const good = source.apply({ type: 'ship', lotId: 'YB-1', qty: 1 })
-    await expect(bad).rejects.toEqual(new SheetsError('Lotto sconosciuto: nessuno'))
+    await expect(bad).rejects.toEqual(new SheetsError('Lotto sconosciuto: nessuno', 'rejected'))
     await expect(good).resolves.toBeUndefined()
   })
 })

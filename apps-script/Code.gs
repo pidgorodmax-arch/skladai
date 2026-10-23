@@ -97,15 +97,36 @@ function doPost(e) {
     var body = JSON.parse(e && e.postData ? e.postData.contents : '{}')
     checkToken(body.token)
     // Два телефони пишуть одночасно — дії виконуються по черзі.
+    var action = body.action || {}
     var lock = LockService.getScriptLock()
     lock.waitLock(10000)
     try {
-      applyAction(body.action || {})
+      // Повтор тієї самої дії (телефон не отримав відповідь і відправив
+      // ще раз) не виконуємо вдруге: id виконаних дій пам'ятаємо 6 годин.
+      var cache = CacheService.getScriptCache()
+      var doneKey = typeof action.id === 'string' && action.id ? 'done:' + action.id : null
+      if (!doneKey || !cache.get(doneKey)) {
+        applyAction(action)
+        if (doneKey) cache.put(doneKey, '1', 21600)
+      }
     } finally {
       lock.releaseLock()
     }
     return { ok: true }
   })
+}
+
+/**
+ * Помилка з типом, щоб застосунок знав, що робити з дією в черзі:
+ *   auth     — неправильний токен: тримати дію й чекати нових налаштувань;
+ *   config   — таблиця не за docs/sheets.md: тримати й чекати виправлення;
+ *   rejected — саму дію не можна виконати (немає лоту тощо): відкинути.
+ * Інші помилки (наприклад, таблиця зайнята) — code «error»: спробувати пізніше.
+ */
+function fail(code, message) {
+  var err = new Error(message)
+  err.code = code
+  throw err
 }
 
 /** Помилки не «падають» сторінкою Google, а повертаються як { ok: false, error }. */
@@ -114,15 +135,15 @@ function respond(fn) {
   try {
     result = fn()
   } catch (err) {
-    result = { ok: false, error: String(err && err.message ? err.message : err) }
+    result = { ok: false, error: String(err && err.message ? err.message : err), code: (err && err.code) || 'error' }
   }
   return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON)
 }
 
 function checkToken(token) {
   var expected = PropertiesService.getScriptProperties().getProperty('TOKEN')
-  if (!expected) throw new Error('TOKEN non configurato nelle proprietà dello script')
-  if (token !== expected) throw new Error('Token non valido')
+  if (!expected) fail('auth', 'TOKEN non configurato nelle proprietà dello script')
+  if (token !== expected) fail('auth', 'Token non valido')
 }
 
 // ---------- Читання таблиці ----------
@@ -130,14 +151,14 @@ function checkToken(token) {
 /** Вкладка → { sheet, col: {назва колонки: номер з 0}, rows: [{ row: номер рядка, data }] }. */
 function readTable(name) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name)
-  if (!sheet) throw new Error('Manca la scheda «' + name + '»')
+  if (!sheet) fail('config', 'Manca la scheda «' + name + '»')
   var values = sheet.getDataRange().getValues()
   var header = (values[0] || []).map(function (h) { return String(h).trim() })
   var col = {}
   header.forEach(function (h, i) { col[h] = i })
   var columns = COLUMNS[name]
   columns.forEach(function (c) {
-    if (!(c[0] in col)) throw new Error('Scheda «' + name + '»: manca la colonna «' + c[0] + '»')
+    if (!(c[0] in col)) fail('config', 'Scheda «' + name + '»: manca la colonna «' + c[0] + '»')
   })
   var rows = []
   for (var r = 1; r < values.length; r++) {
@@ -163,12 +184,12 @@ function toField(v, type, sheetName, colName, rowNumber) {
   if (isEmpty(v)) {
     if (type.slice(-5) === '|null') return null
     if (optional) return undefined
-    throw new Error('Scheda «' + sheetName + '», riga ' + rowNumber + ': «' + colName + '» è vuoto')
+    fail('config', 'Scheda «' + sheetName + '», riga ' + rowNumber + ': «' + colName + '» è vuoto')
   }
   var base = type.replace('?', '').replace('|null', '')
   if (base === 'num') {
     var n = typeof v === 'number' ? v : Number(String(v).trim().replace(',', '.'))
-    if (isNaN(n)) throw new Error('Scheda «' + sheetName + '», riga ' + rowNumber + ': «' + colName + '» non è un numero')
+    if (isNaN(n)) fail('config', 'Scheda «' + sheetName + '», riga ' + rowNumber + ': «' + colName + '» non è un numero')
     return n
   }
   // Якщо клітинку не перевели в «Testo normale», Таблиця віддає об'єкт Date.
@@ -250,8 +271,22 @@ function setCell(table, rowNumber, colName, value) {
   table.sheet.getRange(rowNumber, table.col[colName] + 1).setValue(value)
 }
 
-function writeLog(t, now, text) {
-  appendRow(t.Registro, { data_ora: formatRome(now, "yyyy-MM-dd'T'HH:mm"), evento: text })
+function writeLog(t, at, text) {
+  appendRow(t.Registro, { data_ora: at, evento: text })
+}
+
+/**
+ * Час дії «РРРР-ММ-ДДTгг:хх» за Римом. Телефон передає `at` — коли дію
+ * зробили в цеху: дія з офлайн-черги, відправлена вранці, лишається в
+ * журналі вечірньою. Без `at` — поточний час.
+ */
+function actionTime(at) {
+  var now = formatRome(new Date(), "yyyy-MM-dd'T'HH:mm")
+  // Годинник телефона збитий і показує майбутнє (більше ніж на 10 хв) —
+  // такому часу в журналі HACCP не довіряємо, пишемо час отримання.
+  var limit = formatRome(new Date(Date.now() + 10 * 60000), "yyyy-MM-dd'T'HH:mm")
+  if (typeof at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at) && at <= limit) return at
+  return now
 }
 
 function findRow(table, id) {
@@ -272,31 +307,31 @@ function saveLotQuantities(lotsTable, changed) {
 /** Кількість з запиту → додатне число (рядок чи формула в таблицю не потрапить). */
 function positive(value, message) {
   var n = typeof value === 'number' ? value : NaN
-  if (!(n > 0) || !isFinite(n)) throw new Error(message)
+  if (!(n > 0) || !isFinite(n)) fail('rejected', message)
   return n
 }
 
 function applyAction(action) {
   var t = loadTables()
-  var now = new Date()
+  var now = actionTime(action.at)
   switch (action.type) {
     case 'register': return register(t, action, now)
     case 'ship': return ship(t, action, now)
     case 'move': return move(t, action, now)
     case 'orderStatus': return orderStatus(t, action, now)
-    default: throw new Error('Azione sconosciuta: ' + action.type)
+    default: fail('rejected', 'Azione sconosciuta: ' + action.type)
   }
 }
 
 function register(t, a, now) {
   var productRow = findRow(t.Prodotti, a.productId)
   var locationRow = findRow(t.Posizioni, a.locationId)
-  if (!productRow) throw new Error('Prodotto sconosciuto: ' + a.productId)
-  if (!locationRow) throw new Error('Posizione sconosciuta: ' + a.locationId)
+  if (!productRow) fail('rejected', 'Prodotto sconosciuto: ' + a.productId)
+  if (!locationRow) fail('rejected', 'Posizione sconosciuta: ' + a.locationId)
   var qty = positive(a.qty, 'Quantità non valida')
   var milk = a.milkLitres == null ? '' : positive(a.milkLitres, 'Litri di latte non validi')
   var product = productRow.data
-  var producedAt = formatRome(now, 'yyyy-MM-dd')
+  var producedAt = now.slice(0, 10)
   var id = lotCode(product.abbr, producedAt, t.Lotti.rows.map(function (r) { return r.data.id }))
   appendRow(t.Lotti, {
     id: id,
@@ -312,7 +347,7 @@ function register(t, a, now) {
 
 function ship(t, a, now) {
   var lot = findRow(t.Lotti, a.lotId)
-  if (!lot) throw new Error('Lotto sconosciuto: ' + a.lotId)
+  if (!lot) fail('rejected', 'Lotto sconosciuto: ' + a.lotId)
   var qty = Math.min(positive(a.qty, 'Quantità non valida'), lot.data.qty)
   lot.data.qty -= qty
   saveLotQuantities(t.Lotti, [lot])
@@ -322,20 +357,20 @@ function ship(t, a, now) {
 function move(t, a, now) {
   var lot = findRow(t.Lotti, a.lotId)
   var to = findRow(t.Posizioni, a.locationId)
-  if (!lot) throw new Error('Lotto sconosciuto: ' + a.lotId)
-  if (!to) throw new Error('Posizione sconosciuta: ' + a.locationId)
+  if (!lot) fail('rejected', 'Lotto sconosciuto: ' + a.lotId)
+  if (!to) fail('rejected', 'Posizione sconosciuta: ' + a.locationId)
   setCell(t.Lotti, lot.row, 'posizione', to.data.id)
   writeLog(t, now, 'Lotto ' + lot.data.id + ' spostato in ' + to.data.name)
 }
 
 function orderStatus(t, a, now) {
-  if (ORDER_STATUSES.indexOf(a.status) === -1) throw new Error('Stato non valido: ' + a.status)
+  if (ORDER_STATUSES.indexOf(a.status) === -1) fail('rejected', 'Stato non valido: ' + a.status)
   var orderRows = t.Ordini.rows.filter(function (r) { return r.data.id === a.orderId })
-  if (!orderRows.length) throw new Error('Ordine sconosciuto: ' + a.orderId)
+  if (!orderRows.length) fail('rejected', 'Ordine sconosciuto: ' + a.orderId)
   var order = groupOrders(orderRows)[0]
   if (order.status === a.status) return
   // «Spedito» остаточний: товар уже списано. Повернення — окрема дія (reso, етап 5).
-  if (order.status === 'spedito') throw new Error('Ordine ' + order.id + ' già spedito')
+  if (order.status === 'spedito') fail('rejected', 'Ordine ' + order.id + ' già spedito')
   if (a.status === 'spedito') {
     // FEFO: спершу те, що раніше спливає (для витримки — найстаріше).
     var changed = []

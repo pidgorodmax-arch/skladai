@@ -7,15 +7,17 @@
 //   source.ts   — DataSource: load() на старті, apply(action) на кожну зміну
 //   sheetsSource.ts — те саме для Google Таблиці (Apps Script)
 //   settings.ts — адреса таблиці й токен (лише в цьому браузері)
+//   queuedSource.ts — офлайн-черга дій і копія таблиці для роботи без мережі
 //   reducer.ts  — дії (Action) і як вони змінюють стан
 //   persist.ts  — збереження в localStorage і читання з міграцією
 //   migrate.ts  — перетворення старих даних на поточну версію
 //   useStore.ts — доступ до стану з екранів
 //   useToday.ts — «сьогодні» для селекторів
 
-import { useCallback, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { browserStorage } from './persist'
-import { reducer, type Action } from './reducer'
+import { isSynced, createQueuedSource, type SyncControl } from './queuedSource'
+import { reducer, stamp, type Action } from './reducer'
 import { loadSettings, saveSettings, type SheetsSettings } from './settings'
 import { createSheetsSource, SheetsError } from './sheetsSource'
 import { createDemoSource, type DataSource } from './source'
@@ -38,7 +40,10 @@ function errorText(err: unknown, fallback: string): string {
  */
 export function DataProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SheetsSettings | null>(() => loadSettings(browserStorage))
-  const source = useMemo(() => (settings ? createSheetsSource(settings) : demoSource), [settings])
+  const source = useMemo(
+    () => (settings ? createQueuedSource(createSheetsSource(settings), settings.url, browserStorage) : demoSource),
+    [settings],
+  )
   const connection = useMemo(
     () => ({
       settings,
@@ -118,17 +123,26 @@ export function StoreProvider({ source = demoSource, onUseDemo, children }: { so
   )
 }
 
+/** Свіжий стан із таблиці після синхронізації — замінює те, що на екрані. */
+type Fresh = { type: 'fresh'; state: AppState }
+
+function storeReducer(state: AppState, msg: Action | Fresh): AppState {
+  return msg.type === 'fresh' ? msg.state : reducer(state, msg)
+}
+
 function LoadedStore({ initial, source, children }: { initial: AppState; source: DataSource; children: ReactNode }) {
-  const [state, apply] = useReducer(reducer, initial)
+  const [state, apply] = useReducer(storeReducer, initial)
   const [saveError, setSaveError] = useState<string | null>(null)
   const today = useToday()
   // Екран оновлюється одразу, а збереження йде в джерело паралельно.
-  // Якщо зберегти не вдалося — показуємо це, а не мовчимо: інакше працівник
-  // думає, що партія в таблиці. Черга для роботи без мережі — завдання 2.5.
+  // Дія отримує час і id (stamp): з офлайн-черги вона дійде до таблиці
+  // пізніше, але з часом, коли її зробили. Якщо зберегти не вдалося —
+  // показуємо це, а не мовчимо.
   const dispatch = useCallback(
     (action: Action) => {
-      apply(action)
-      source.apply(action).catch((err: unknown) => {
+      const stamped = stamp(action)
+      apply(stamped)
+      source.apply(stamped).catch((err: unknown) => {
         console.error('Salvataggio non riuscito', err)
         setSaveError(errorText(err, 'Salvataggio non riuscito'))
       })
@@ -136,8 +150,10 @@ function LoadedStore({ initial, source, children }: { initial: AppState; source:
     [source],
   )
   const value = useMemo(() => ({ state, dispatch, today }), [state, dispatch, today])
+  const onFresh = useCallback((fresh: AppState) => apply({ type: 'fresh', state: fresh }), [])
   return (
     <StoreContext.Provider value={value}>
+      {isSynced(source) && <SyncBar sync={source.sync} onFresh={onFresh} />}
       {saveError && (
         <div className="save-error" role="alert">
           <span>
@@ -150,5 +166,65 @@ function LoadedStore({ initial, source, children }: { initial: AppState; source:
       )}
       {children}
     </StoreContext.Provider>
+  )
+}
+
+const RETRY_MS = 30_000
+
+/**
+ * Позначка «non sincronizzato» і повторна відправка черги: коли з'являється
+ * мережа, коли застосунок знову на екрані і раз на 30 секунд.
+ */
+function SyncBar({ sync, onFresh }: { sync: SyncControl; onFresh: (state: AppState) => void }) {
+  const status = useSyncExternalStore(sync.subscribe, sync.status)
+
+  useEffect(() => sync.onFreshState(onFresh), [sync, onFresh])
+  useEffect(() => {
+    const retry = () => void sync.flush()
+    const onVisible = () => document.visibilityState === 'visible' && retry()
+    window.addEventListener('online', retry)
+    document.addEventListener('visibilitychange', onVisible)
+    const timer = setInterval(() => {
+      const { pending, offline } = sync.status()
+      if (pending > 0 || offline) retry()
+    }, RETRY_MS)
+    return () => {
+      window.removeEventListener('online', retry)
+      document.removeEventListener('visibilitychange', onVisible)
+      clearInterval(timer)
+    }
+  }, [sync])
+
+  const { pending, syncing, offline, error } = status
+  return (
+    <>
+      {error && (
+        <div className="save-error" role="alert">
+          <span>{error}</span>
+          <button type="button" className="btn" onClick={sync.clearError}>
+            Chiudi
+          </button>
+        </div>
+      )}
+      {(pending > 0 || offline) && (
+        <div className="sync-bar" role="status">
+          <span>
+            {pending > 0 ? (
+              <>
+                <strong>{pending === 1 ? '1 operazione non sincronizzata' : `${pending} operazioni non sincronizzate`}</strong>
+                {offline ? ` · senza connessione, ${pending === 1 ? 'salvata' : 'salvate'} sul telefono` : syncing ? ' · invio in corso…' : ''}
+              </>
+            ) : (
+              <strong>Senza connessione: dati dell'ultima sincronizzazione</strong>
+            )}
+          </span>
+          {pending > 0 && (
+            <button type="button" className="btn" onClick={() => void sync.flush()} disabled={syncing}>
+              Sincronizza ora
+            </button>
+          )}
+        </div>
+      )}
+    </>
   )
 }

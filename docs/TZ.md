@@ -172,7 +172,7 @@ Telegram. Ключі — лише в GitHub Secrets, ніколи у фронт�
 - [x] 2.2a Артикули (codice, sigla) і час Europe/Rome (`types.ts` v2, `time.ts`, міграція v1→v2)
 - [x] 2.3 Apps Script (`apps-script/Code.gs`, інструкція й curl — `apps-script/README.md`; тест-договір `src/data/appsScript.test.ts`)
 - [x] 2.4 SheetsSource і налаштування (`sheetsSource.ts`, `settings.ts`, сторінка `#/impostazioni`)
-- [ ] 2.5 Офлайн-черга
+- [x] 2.5 Офлайн-черга (`queuedSource.ts`; час і id дії; «non sincronizzato»)
 - [ ] Етап 2b — коробки, сканування, збирання замовлень
 - [ ] Етап 3
 - [ ] Етап 4
