@@ -131,7 +131,7 @@ describe('офлайн-черга', () => {
     const seen: AppState[] = []
     source.sync.onFreshState((s) => seen.push(s))
     // Поки телефон був офлайн, у таблиці змінили кількість.
-    sheets.Lotti.values[1][COLUMNS.Lotti.findIndex((c) => c[0] === 'quantita')] = 4
+    sheets.Colli.values[1][COLUMNS.Colli.findIndex((c) => c[0] === 'quantita')] = 4 // перша коробка — MO-NEW-1
     await source.sync.flush()
     expect(source.sync.status().offline).toBe(true) // мережі ще немає
     net.online = true
@@ -198,7 +198,8 @@ describe('офлайн-черга', () => {
     const expected = actions.reduce(reducer, makeState())
     expect(column(sheets.Lotti, 'id')).toEqual(expected.lots.map((l) => l.id))
     expect(lotCodes(sheets.Lotti)).toEqual(expected.lots.map((l) => l.code))
-    expect(sheets.Lotti.values.at(-1)![COLUMNS.Lotti.findIndex((c) => c[0] === 'posizione')]).toBe('A')
+    expect(column(sheets.Colli, 'lotto')).toEqual(expected.boxes.map((b) => b.lotId))
+    expect(sheets.Colli.values.at(-1)![COLUMNS.Colli.findIndex((c) => c[0] === 'posizione')]).toBe('A')
   })
 
   it('відповідь загубилась після запису — повтор не дублює партію', async () => {
@@ -243,12 +244,12 @@ describe('офлайн-черга', () => {
     const seen: AppState[] = []
     source.sync.onFreshState((s) => seen.push(s))
     // Інший телефон змінив кількість прямо в таблиці.
-    sheets.Lotti.values[1][COLUMNS.Lotti.findIndex((c) => c[0] === 'quantita')] = 9
+    sheets.Colli.values[1][COLUMNS.Colli.findIndex((c) => c[0] === 'quantita')] = 9
     const action = stamp({ type: 'move', lotId: 'MZ-1', locationId: 'A' })
     await source.apply(action)
     await source.sync.flush()
     const expected = reducer(makeState(), action)
-    expected.boxes[0] = { ...expected.boxes[0], qty: 9 } // рядок 1 у Lotti — MO-NEW, його коробка MO-NEW-1
+    expected.boxes[0] = { ...expected.boxes[0], qty: 9 } // рядок 1 у Colli — MO-NEW-1
     expect(seen.at(-1)).toEqual(plain(expected))
   })
 
@@ -304,13 +305,14 @@ describe('два телефони без мережі створили одна�
     b.net.online = true
     await b.source.sync.flush()
 
-    const lots = sheets.Lotti.values.slice(1)
-    const col = (name: string) => sheets.Lotti.values[0].indexOf(name)
-    const rowA = lots.find((r) => r[col('id')] === idA)!
-    const rowB = lots.find((r) => r[col('id')] === idB)!
-    // Код другої партії таблиця змінила, ID — ні.
-    expect([rowA[col('codice')], rowA[col('quantita')], rowA[col('posizione')]]).toEqual(['L-1506-MZ', 40, 'C'])
-    expect([rowB[col('codice')], rowB[col('quantita')], rowB[col('posizione')]]).toEqual(['L-1506-MZ2', 7, 'A'])
+    const col = (sheet: FakeSheet, name: string) => sheet.values[0].indexOf(name)
+    const lotRow = (id: string) => sheets.Lotti.values.find((r) => r[col(sheets.Lotti, 'id')] === id)!
+    const boxRow = (lotId: string) => sheets.Colli.values.find((r) => r[col(sheets.Colli, 'lotto')] === lotId)!
+    // Код другої партії таблиця змінила, ID — ні; коробки прив'язані до ID.
+    expect(lotRow(idA)[col(sheets.Lotti, 'codice')]).toBe('L-1506-MZ')
+    expect(lotRow(idB)[col(sheets.Lotti, 'codice')]).toBe('L-1506-MZ2')
+    expect([boxRow(idA)[col(sheets.Colli, 'quantita')], boxRow(idA)[col(sheets.Colli, 'posizione')]]).toEqual([40, 'C'])
+    expect([boxRow(idB)[col(sheets.Colli, 'quantita')], boxRow(idB)[col(sheets.Colli, 'posizione')]]).toEqual([7, 'A'])
     expect(sheets.Registro.values.slice(-4).map((r) => r[1])).toEqual([
       'Prodotto lotto L-1506-MZ: Mozzarella 40 kg → Cella 1 · ripiano 1',
       'Prodotto lotto L-1506-MZ2: Mozzarella 10 kg → Cella 1 · ripiano 1',
@@ -326,10 +328,10 @@ describe('два телефони без мережі створили одна�
     const { sheets, fetchFn } = fakeGoogle()
     const source = makeSource(fetchFn, memoryStorage())
     await source.load()
-    const before = sheets.Lotti.values.map((r) => [...r])
+    const before = [sheets.Lotti, sheets.Colli].map((t) => t.values.map((r) => [...r]))
     await source.apply(stamp({ type: 'ship', lotId: 'id-che-non-esiste', qty: 1, code: 'L-1206-MZ' }))
     await source.sync.flush()
     expect(source.sync.status().error).toBe('Uscita dal lotto L-1206-MZ non salvato: Lotto sconosciuto: L-1206-MZ')
-    expect(sheets.Lotti.values).toEqual(before)
+    expect([sheets.Lotti.values, sheets.Colli.values]).toEqual(before)
   })
 })

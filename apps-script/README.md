@@ -64,6 +64,12 @@
 *Versione*: **Nuova versione** → **Esegui il deployment**. URL лишається
 той самий. (Якщо створити *новий* deployment — URL зміниться.)
 
+**Оновлення до коробок (2b.1a).** Якщо таблиця створена раніше (без
+вкладки `Colli`), просто встав новий `Code.gs` і зроби нову версію, як
+вище. Таблиця й далі читається; під час першого запису з телефона скрипт
+сам створить `Colli` і перенесе туди кількості з `Lotti`
+(див. `docs/sheets.md`, вкладка `Colli`).
+
 ## Ручна перевірка з curl
 
 Підстав свої значення (у терміналі; на Windows — Git Bash):
@@ -91,7 +97,7 @@ curl -sL -H 'Content-Type: text/plain' \
   "$URL"
 ```
 
-Очікувано: `{"ok":true}`; у вкладці `Lotti` — новий рядок (`codice` = `L-ДДММ-MZ`; без `lotId` у запиті `id` = код), у
+Очікувано: `{"ok":true}`; у вкладці `Lotti` — новий рядок (`codice` = `L-ДДММ-MZ`; без `lotId` у запиті `id` = код), у `Colli` — його коробка `<id>-1`, у
 `Registro` — запис «Prodotto lotto …» з часом за Римом.
 
 **3. Помилки** повертаються як `{"ok":false,"error":"…"}` (італійською), а
@@ -126,10 +132,10 @@ curl -sL "$URL?token=sbagliato"
 
 | `type` | Поля | Що робить у таблиці |
 |---|---|---|
-| `register` | `productId`, `qty`, `locationId`, `milkLitres?`, `lotId?`, `code?` | Новий рядок у `Lotti`. `lotId` — внутрішній ID, створений телефоном (партію з таким ID вдруге не створює). `code` — код, який бачила людина; якщо його вже зайняла інша партія — наступний вільний (`…MZ2`). Дата за Римом, термін = дата + `giorni_scadenza` |
-| `move` | `lotId`, `locationId`, `code?` | Міняє `posizione` партії з **ID** `lotId` (`code` — лише для повідомлень) |
-| `ship` | `lotId`, `qty`, `code?` | Зменшує `quantita` партії з **ID** `lotId`; на 0 — видаляє рядок |
-| `orderStatus` | `orderId`, `status` (`nuovo` / `in_preparazione` / `spedito`) | Міняє `stato` в усіх рядках замовлення; `spedito` списує `Lotti` за FEFO і остаточний |
+| `register` | `productId`, `qty`, `locationId`, `milkLitres?`, `lotId?`, `code?` | Новий рядок у `Lotti` і коробка `<id>-1` у `Colli`. `lotId` — внутрішній ID, створений телефоном (партію з таким ID вдруге не створює). `code` — код, який бачила людина; якщо його вже зайняла інша партія — наступний вільний (`…MZ2`). Дата за Римом, термін = дата + `giorni_scadenza` |
+| `move` | `lotId`, `locationId`, `code?` | Міняє `posizione` в усіх коробках (`Colli`) партії з **ID** `lotId` (`code` — лише для повідомлень) |
+| `ship` | `lotId`, `qty`, `code?` | Бере `qty` з коробок партії з **ID** `lotId` по черзі; порожня коробка зникає, партія без коробок — теж |
+| `orderStatus` | `orderId`, `status` (`nuovo` / `in_preparazione` / `spedito`) | Міняє `stato` в усіх рядках замовлення; `spedito` списує коробки (`Colli`) за FEFO і остаточний |
 
 Кожна дія, крім зміни статусу без відвантаження, дописує рядок у
 `Registro`. Одночасні записи з кількох телефонів виконуються по черзі
