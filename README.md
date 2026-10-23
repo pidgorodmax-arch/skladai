@@ -42,6 +42,8 @@ src/
     types.ts      — модель: продукти, зони, місця, партії, замовлення, журнал
     seed.ts       — демо-дані (дати відносно сьогодні)
     store.tsx     — ЄДИНЕ сховище стану: усі зміни йдуть через dispatch(...)
+    source.ts     — DataSource: load() на старті, apply(action) на кожну зміну;
+                    DemoSource — localStorage (далі SheetsSource — Google Sheets)
     reducer.ts    — дії і як вони змінюють стан (register, ship, move, orderStatus)
     persist.ts    — збереження в localStorage, резервна копія нечитабельних даних
     migrate.ts    — міграції: старі збережені дані → поточна версія
@@ -64,7 +66,7 @@ demo» внизу повертає демо.
 
 ## Наступні кроки
 
-1. **Справжні дані.** Замінити `loadState/saveState` (`persist.ts`) на
+1. **Справжні дані.** Додати `SheetsSource` (той самий інтерфейс, що й `DemoSource` у `source.ts`) для
    Google Sheets (API Sistema Latteria на Apps Script) — екрани не зміняться.
 2. **AI-агент.** Невеликий серверний скрипт (як у податковому боті), що
    передає ці ж цифри в Claude API: брифінг текстом, вільні питання,
