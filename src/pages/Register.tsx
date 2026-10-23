@@ -28,7 +28,7 @@ export default function Register() {
   const qtyNum = Number(qty.replace(',', '.')) || 0
   const milkNum = Number(milk.replace(',', '.')) || 0
   const producedAt = isoDate(today)
-  const nextLot = lotCode(product.id, producedAt, state.lots.map((l) => l.id))
+  const nextLot = lotCode(product.abbr, producedAt, state.lots.map((l) => l.id))
   const expiry = expiryFor(product, producedAt)
   const yieldPct = product.unit === 'kg' && milkNum > 0 ? (qtyNum / milkNum) * 100 : null
   const planRow = productionPlan(state, today).find((r) => r.product.id === product.id)

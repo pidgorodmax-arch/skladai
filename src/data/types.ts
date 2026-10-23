@@ -1,10 +1,15 @@
 // Модель даних SkladAI. Усі екрани (дашборд, 3D-карта, телефон) читають
 // і змінюють ОДНІ й ті самі дані — у цьому суть «однієї системи».
 
-export type Unit = 'kg' | 'L' | 'vasetti' | 'forme'
+/** pz — штуки (фасовані артикули: упаковки, вазочки). */
+export type Unit = 'kg' | 'L' | 'vasetti' | 'forme' | 'pz'
 
 export interface Product {
   id: string
+  /** Код артикула в програмі обліку клієнта (колонка `codice`); у демо — вигаданий. */
+  code?: string
+  /** Сигла для коду лоту: `MZ` → `L-2310-MZ` (колонка `sigla`). */
+  abbr: string
   name: string
   unit: Unit
   /** Скільки «місць» на полиці займає одна одиниця (кг, л, вазочок, форма). */
@@ -80,7 +85,7 @@ export interface Order {
  * Версія формату даних. Збільшуй її, коли змінюєш AppState так, що старі
  * збережені дані вже не підходять, і додай крок у MIGRATIONS (migrate.ts).
  */
-export const STATE_VERSION = 1
+export const STATE_VERSION = 2
 
 export interface AppState {
   version: typeof STATE_VERSION

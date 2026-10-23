@@ -1,7 +1,7 @@
 // Тести міграцій: старі або пошкоджені дані не повинні ламати застосунок.
 
 import { describe, expect, it } from 'vitest'
-import { isAppState, migrate, runMigrations, type Migration } from './migrate'
+import { fallbackAbbr, isAppState, migrate, runMigrations, type Migration } from './migrate'
 import { makeState } from './testState'
 import { STATE_VERSION } from './types'
 
@@ -29,6 +29,48 @@ describe('migrate', () => {
 
   it('дані новішої версії, ніж знає застосунок, → null', () => {
     expect(migrate({ ...makeState(), version: STATE_VERSION + 1 })).toBeNull()
+  })
+})
+
+describe('v1 → v2: сигла продукту (2.2a)', () => {
+  /** Стан у форматі v1: без version 2 і без abbr/code у продуктів. */
+  function v1State(): Record<string, unknown> {
+    const state = makeState()
+    return {
+      ...state,
+      version: 1,
+      products: [
+        ...state.products.map(({ id, name, unit, spacePerUnit, shelfLifeDays, pricePerUnit, storage }) => ({
+          id, name, unit, spacePerUnit, shelfLifeDays, pricePerUnit, storage,
+        })),
+        { id: 'stracchino-2', name: 'Stracchino', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 10, pricePerUnit: 8, storage: 'cold' },
+      ],
+    }
+  }
+
+  it('відомі продукти отримують сиглу зі старої таблиці, невідомі — з літер id', () => {
+    const migrated = migrate(v1State())!
+    expect(migrated.version).toBe(STATE_VERSION)
+    expect(migrated.products.map((p) => [p.id, p.abbr, p.code])).toEqual([
+      ['montasio', 'MO', undefined],
+      ['mozzarella', 'MZ', undefined],
+      ['yogurt', 'YB', undefined],
+      ['stracchino-2', 'ST', undefined],
+    ])
+  })
+
+  it('партії, замовлення й журнал не змінюються', () => {
+    const old = v1State()
+    const migrated = migrate(old)!
+    expect(migrated.lots).toEqual(old.lots)
+    expect(migrated.orders).toEqual(old.orders)
+    expect(migrated.log).toEqual(old.log)
+  })
+
+  it('id без літер → XX', () => {
+    expect(fallbackAbbr('123')).toBe('XX')
+    expect(fallbackAbbr('')).toBe('XX')
+    expect(fallbackAbbr('c1-latte')).toBe('CL')
   })
 })
 

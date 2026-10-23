@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reducer } from './reducer'
 import { TEST_NOW, makeState } from './testState'
-import type { AppState } from './types'
+import { STATE_VERSION, type AppState } from './types'
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -32,18 +32,40 @@ describe('register — нова партія', () => {
       expiresAt: '2026-06-22', // + 7 днів
       milkLitres: 410,
     })
-    expect(next.log.at(-1)).toEqual({ at: '2026-06-15T12:00', text: 'Prodotto lotto L-1506-MZ: Mozzarella 40 kg → Cella 1 · ripiano 1' })
+    // TEST_NOW = 12:00 UTC → у журналі 14:00 за Римом (літній час, UTC+2)
+    expect(next.log.at(-1)).toEqual({ at: '2026-06-15T14:00', text: 'Prodotto lotto L-1506-MZ: Mozzarella 40 kg → Cella 1 · ripiano 1' })
   })
 
-  it('після півночі за італійським часом партія отримує сьогоднішню дату, а не вчорашню (UTC)', () => {
-    vi.stubEnv('TZ', 'Europe/Rome')
+  it('після півночі за Римом партія й журнал отримують римську дату — на пристрої в будь-якому поясі', () => {
     vi.setSystemTime(new Date('2026-06-15T22:30:00Z')) // у Римі вже 16.06, 00:30
+    for (const tz of ['UTC', 'America/New_York']) {
+      vi.stubEnv('TZ', tz)
+      try {
+        const next = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
+        expect(next.lots.at(-1)).toMatchObject({ id: 'L-1606-MZ', producedAt: '2026-06-16', expiresAt: '2026-06-23' })
+        expect(next.log.at(-1)!.at).toBe('2026-06-16T00:30')
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    }
+  })
+
+  it('взимку журнал теж за Римом (UTC+1)', () => {
+    vi.setSystemTime(new Date('2026-01-15T22:30:00Z'))
+    vi.stubEnv('TZ', 'UTC')
     try {
-      const next = reducer(makeState(), { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
-      expect(next.lots.at(-1)).toMatchObject({ id: 'L-1606-MZ', producedAt: '2026-06-16', expiresAt: '2026-06-23' })
+      const next = reducer(makeState(), { type: 'move', lotId: makeState().lots[0].id, locationId: 'B' })
+      expect(next.log.at(-1)!.at).toBe('2026-01-15T23:30')
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+
+  it('код лоту бере сиглу з продукту (її можна змінити в таблиці)', () => {
+    const state = makeState()
+    state.products = state.products.map((p) => (p.id === 'mozzarella' ? { ...p, abbr: 'MOZ' } : p))
+    const next = reducer(state, { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' })
+    expect(next.lots.at(-1)!.id).toBe('L-1506-MOZ')
   })
 
   it('Montasio отримує термін null (витримка)', () => {
@@ -161,8 +183,20 @@ describe('orderStatus — статус замовлення', () => {
 describe('reset', () => {
   it('повертає демо-дані', () => {
     const next = reducer(makeState(), { type: 'reset' })
-    expect(next.version).toBe(1)
+    expect(next.version).toBe(STATE_VERSION)
     expect(next.lots.length).toBeGreaterThan(5)
     expect(next.orders.length).toBeGreaterThan(0)
+  })
+
+  it('у демо кожен продукт має вигаданий код ART-… і власну сиглу', () => {
+    const { products, lots } = reducer(makeState(), { type: 'reset' })
+    for (const p of products) expect(p.code).toMatch(/^ART-\d{4}$/)
+    const abbrs = products.map((p) => p.abbr)
+    expect(new Set(abbrs).size).toBe(abbrs.length)
+    // коди лотів демо побудовані із сигл
+    for (const lot of lots) {
+      const abbr = products.find((p) => p.id === lot.productId)!.abbr
+      expect(lot.id).toMatch(new RegExp(`^L-\\d{4}-${abbr}\\d*$`))
+    }
   })
 })

@@ -1,32 +1,32 @@
 // Демо-дані для невеликої сироварні у Фріулі. Дати рахуються відносно
-// сьогоднішнього дня, тому демо завжди виглядає «свіжим».
+// сьогоднішнього дня (за Римом), тому демо завжди виглядає «свіжим».
+// Усе тут вигадане: коди ART-000N, ціни, клієнти (репозиторій публічний).
 
+import { startOfDay } from './selectors'
 import { STATE_VERSION, type AppState, type Lot, type Product } from './types'
 
 const DAY = 24 * 60 * 60 * 1000
 
-export function isoDay(offsetDays: number, from = new Date()): string {
+/** День через `offsetDays` від `from` (за замовчуванням — сьогодні в Римі), «РРРР-ММ-ДД». */
+export function isoDay(offsetDays: number, from = startOfDay(new Date())): string {
   const d = new Date(from.getTime() + offsetDays * DAY)
   return d.toISOString().slice(0, 10)
 }
 
 const products: Product[] = [
-  { id: 'montasio', name: 'Montasio DOP', unit: 'forme', spacePerUnit: 1, shelfLifeDays: null, pricePerUnit: 95, storage: 'aging' },
-  { id: 'mozzarella', name: 'Mozzarella', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 7, pricePerUnit: 9.5, yieldPerLitre: 0.098, storage: 'cold' },
-  { id: 'ricotta', name: 'Ricotta', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 5, pricePerUnit: 7, storage: 'cold' },
-  { id: 'yogurt', name: 'Yogurt bianco', unit: 'vasetti', spacePerUnit: 0.15, shelfLifeDays: 21, pricePerUnit: 0.9, storage: 'cold' },
-  { id: 'kefir', name: 'Kefir', unit: 'L', spacePerUnit: 1, shelfLifeDays: 14, pricePerUnit: 3.2, storage: 'cold' },
-  { id: 'burro', name: 'Burro', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 40, pricePerUnit: 11, storage: 'cold' },
-  { id: 'latte', name: 'Latte fresco', unit: 'L', spacePerUnit: 1, shelfLifeDays: 4, pricePerUnit: 1.6, storage: 'cold' },
+  { id: 'montasio', code: 'ART-0007', abbr: 'MO', name: 'Montasio DOP', unit: 'forme', spacePerUnit: 1, shelfLifeDays: null, pricePerUnit: 95, storage: 'aging' },
+  { id: 'mozzarella', code: 'ART-0001', abbr: 'MZ', name: 'Mozzarella', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 7, pricePerUnit: 9.5, yieldPerLitre: 0.098, storage: 'cold' },
+  { id: 'ricotta', code: 'ART-0003', abbr: 'RI', name: 'Ricotta', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 5, pricePerUnit: 7, storage: 'cold' },
+  { id: 'yogurt', code: 'ART-0005', abbr: 'YB', name: 'Yogurt bianco', unit: 'vasetti', spacePerUnit: 0.15, shelfLifeDays: 21, pricePerUnit: 0.9, storage: 'cold' },
+  { id: 'kefir', code: 'ART-0006', abbr: 'KF', name: 'Kefir', unit: 'L', spacePerUnit: 1, shelfLifeDays: 14, pricePerUnit: 3.2, storage: 'cold' },
+  { id: 'burro', code: 'ART-0004', abbr: 'BU', name: 'Burro', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 40, pricePerUnit: 11, storage: 'cold' },
+  { id: 'latte', code: 'ART-0002', abbr: 'LT', name: 'Latte fresco', unit: 'L', spacePerUnit: 1, shelfLifeDays: 4, pricePerUnit: 1.6, storage: 'cold' },
 ]
 
-const ABBR: Record<string, string> = {
-  montasio: 'MO', mozzarella: 'MZ', ricotta: 'RI', yogurt: 'YB', kefir: 'KF', burro: 'BU', latte: 'LT',
-}
-
-export function lotCode(productId: string, producedAt: string, existing: string[]): string {
+/** Код лоту: «L-ДДММ-сигла», за повтору того ж дня — суфікс 2, 3, … */
+export function lotCode(abbr: string, producedAt: string, existing: string[]): string {
   const [, mm, dd] = producedAt.split('-')
-  const base = `L-${dd}${mm}-${ABBR[productId] ?? 'XX'}`
+  const base = `L-${dd}${mm}-${abbr || 'XX'}`
   let code = base
   let n = 2
   while (existing.includes(code)) code = `${base}${n++}`
@@ -45,7 +45,7 @@ export function createSeed(): AppState {
     const product = products.find((p) => p.id === productId)!
     const producedAt = isoDay(-producedDaysAgo)
     lots.push({
-      id: lotCode(productId, producedAt, lots.map((l) => l.id)),
+      id: lotCode(product.abbr, producedAt, lots.map((l) => l.id)),
       productId,
       qty,
       locationId,
