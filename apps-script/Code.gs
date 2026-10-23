@@ -269,6 +269,13 @@ function saveLotQuantities(lotsTable, changed) {
   toDelete.sort(function (a, b) { return b - a }).forEach(function (row) { lotsTable.sheet.deleteRow(row) })
 }
 
+/** Кількість з запиту → додатне число (рядок чи формула в таблицю не потрапить). */
+function positive(value, message) {
+  var n = typeof value === 'number' ? value : NaN
+  if (!(n > 0) || !isFinite(n)) throw new Error(message)
+  return n
+}
+
 function applyAction(action) {
   var t = loadTables()
   var now = new Date()
@@ -286,27 +293,27 @@ function register(t, a, now) {
   var locationRow = findRow(t.Posizioni, a.locationId)
   if (!productRow) throw new Error('Prodotto sconosciuto: ' + a.productId)
   if (!locationRow) throw new Error('Posizione sconosciuta: ' + a.locationId)
-  if (!(a.qty > 0)) throw new Error('Quantità non valida')
+  var qty = positive(a.qty, 'Quantità non valida')
+  var milk = a.milkLitres == null ? '' : positive(a.milkLitres, 'Litri di latte non validi')
   var product = productRow.data
   var producedAt = formatRome(now, 'yyyy-MM-dd')
   var id = lotCode(product.abbr, producedAt, t.Lotti.rows.map(function (r) { return r.data.id }))
   appendRow(t.Lotti, {
     id: id,
     prodotto: product.id,
-    quantita: a.qty,
+    quantita: qty,
     posizione: locationRow.data.id,
     data_produzione: producedAt,
     scadenza: product.shelfLifeDays == null ? '' : addDays(producedAt, product.shelfLifeDays),
-    litri_latte: a.milkLitres == null ? '' : a.milkLitres,
+    litri_latte: milk,
   })
-  writeLog(t, now, 'Prodotto lotto ' + id + ': ' + product.name + ' ' + a.qty + ' ' + product.unit + ' → ' + locationRow.data.name)
+  writeLog(t, now, 'Prodotto lotto ' + id + ': ' + product.name + ' ' + qty + ' ' + product.unit + ' → ' + locationRow.data.name)
 }
 
 function ship(t, a, now) {
   var lot = findRow(t.Lotti, a.lotId)
   if (!lot) throw new Error('Lotto sconosciuto: ' + a.lotId)
-  if (!(a.qty > 0)) throw new Error('Quantità non valida')
-  var qty = Math.min(a.qty, lot.data.qty)
+  var qty = Math.min(positive(a.qty, 'Quantità non valida'), lot.data.qty)
   lot.data.qty -= qty
   saveLotQuantities(t.Lotti, [lot])
   writeLog(t, now, 'Uscita ' + qty + ' dal lotto ' + lot.data.id)

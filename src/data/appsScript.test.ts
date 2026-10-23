@@ -205,6 +205,8 @@ describe('Apps Script: doPost дає той самий результат, що 
       [{ type: 'register', productId: 'nessuno', qty: 1, locationId: 'C' }, 'Prodotto sconosciuto: nessuno'],
       [{ type: 'register', productId: 'mozzarella', qty: 0, locationId: 'C' }, 'Quantità non valida'],
       [{ type: 'ship', lotId: 'YB-1', qty: -5 }, 'Quantità non valida'],
+      [{ type: 'ship', lotId: 'YB-1', qty: '3' }, 'Quantità non valida'],
+      [{ type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C', milkLitres: '=IMPORTXML("x")' }, 'Litri di latte non validi'],
       [{ type: 'move', lotId: 'MZ-1', locationId: 'Z9' }, 'Posizione sconosciuta: Z9'],
       [{ type: 'orderStatus', orderId: 'O1', status: 'perso' }, 'Stato non valido: perso'],
       [{ type: 'reset' }, 'Azione sconosciuta: reset'],

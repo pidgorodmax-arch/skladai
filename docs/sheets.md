@@ -235,8 +235,9 @@ AI-брифінгу. Відповідає `AppState.log`. Застосунок *
    Зручно: **Visualizza → Blocca → 1 riga**, щоб заголовок не зникав при
    прокручуванні.
 4. Колонки з датами (`Lotti.data_produzione`, `Lotti.scadenza`,
-   `Ordini.consegna`, `Registro.data_ora`) → **Formato → Numero → Testo
-   normale**.
+   `Ordini.consegna`, `Registro.data_ora`) і колонки з кодами (`id`,
+   `zona`, `prodotto`, `posizione`) → **Formato → Numero → Testo normale**.
+   Інакше Таблиця може «вгадати» дату в коді на кшталт `1-2`.
 5. Заповни `Prodotti`, `Zone` і `Posizioni` (це «довідники» — міняються
    рідко). `Lotti` і `Ordini` можна заповнити поточними залишками й
    замовленнями або почати з порожніх.
