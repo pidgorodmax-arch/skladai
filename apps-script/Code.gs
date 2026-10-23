@@ -1,4 +1,4 @@
-// SkladAI — Apps Script для Google Таблиці клієнта (завдання 2.3).
+// SkladAI — Apps Script для Google Таблиці клієнта (завдання 2.3; коробки — 2b.1a).
 //
 // Що робить:
 //   doGet  — читає всі вкладки й повертає дані у форматі застосунку (AppState).
@@ -14,7 +14,7 @@
 // Безпека: доступ лише з токеном. Токен зберігається у властивостях скрипта
 // (Impostazioni progetto → Proprietà script → TOKEN), не в коді й не в таблиці.
 
-var STATE_VERSION = 3
+var STATE_VERSION = 4
 var TIME_ZONE = 'Europe/Rome'
 
 // Колонки кожної вкладки: [назва в таблиці, поле в застосунку, тип].
@@ -57,15 +57,21 @@ var COLUMNS = {
     ['nota', 'note', 'text?'],
   ],
   // id — внутрішній ID (створює телефон, людям не потрібен); codice — код для людей.
+  // Кількості й місця тут немає: партія лежить у коробках (вкладка Colli).
   Lotti: [
     ['id', 'id', 'text'],
     ['codice', 'code', 'text'],
     ['prodotto', 'productId', 'text'],
-    ['quantita', 'qty', 'num'],
-    ['posizione', 'locationId', 'text'],
     ['data_produzione', 'producedAt', 'date'],
     ['scadenza', 'expiresAt', 'date|null'],
     ['litri_latte', 'milkLitres', 'num?'],
+  ],
+  // Коробки (2b.1a): одна коробка = один рядок; залишок партії = сума її коробок.
+  Colli: [
+    ['id', 'id', 'text'],
+    ['lotto', 'lotId', 'text'],
+    ['posizione', 'locationId', 'text'],
+    ['quantita', 'qty', 'num'],
   ],
   // Один рядок = одна позиція замовлення; рядки з однаковим id — одне замовлення.
   Ordini: [
@@ -82,6 +88,12 @@ var COLUMNS = {
     ['evento', 'text', 'text'],
   ],
 }
+
+// Стара таблиця (до 2b.1a) без вкладки Colli: кількість і місце — у рядку Lotti.
+var LEGACY_LOTTI = COLUMNS.Lotti.concat([
+  ['quantita', 'qty', 'num'],
+  ['posizione', 'locationId', 'text'],
+])
 
 var ORDER_STATUSES = ['nuovo', 'in_preparazione', 'spedito']
 
@@ -150,15 +162,18 @@ function checkToken(token) {
 
 // ---------- Читання таблиці ----------
 
-/** Вкладка → { sheet, col: {назва колонки: номер з 0}, rows: [{ row: номер рядка, data }] }. */
-function readTable(name) {
+/**
+ * Вкладка → { sheet, col: {назва колонки: номер з 0}, rows: [{ row: номер рядка, data }] }.
+ * columns — які колонки читати (за замовчуванням COLUMNS[name]).
+ */
+function readTable(name, columns) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name)
   if (!sheet) fail('config', 'Manca la scheda «' + name + '»')
   var values = sheet.getDataRange().getValues()
   var header = (values[0] || []).map(function (h) { return String(h).trim() })
   var col = {}
   header.forEach(function (h, i) { col[h] = i })
-  var columns = COLUMNS[name]
+  columns = columns || COLUMNS[name]
   columns.forEach(function (c) {
     if (!(c[0] in col)) fail('config', 'Scheda «' + name + '»: manca la colonna «' + c[0] + '»')
   })
@@ -214,10 +229,37 @@ function toField(v, type, sheetName, colName, rowNumber) {
   return String(v).trim()
 }
 
+/**
+ * Усі вкладки. Якщо вкладки Colli ще немає (таблиця до 2b.1a), коробки
+ * будуються в пам'яті з Lotti — як міграція v3→v4 у застосунку: кожна
+ * партія з кількістю й місцем = одна коробка `<id>-1`. Тоді t.legacy = true.
+ */
 function loadTables() {
   var t = {}
-  Object.keys(COLUMNS).forEach(function (name) { t[name] = readTable(name) })
+  var hasColli = !!SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Colli')
+  Object.keys(COLUMNS).forEach(function (name) {
+    if (name === 'Colli' && !hasColli) return
+    t[name] = readTable(name, name === 'Lotti' && !hasColli ? LEGACY_LOTTI : undefined)
+  })
+  if (!hasColli) {
+    t.legacy = true
+    t.Lotti.rows = t.Lotti.rows.filter(function (r) { return r.data.qty > 0 && r.data.locationId })
+    t.Colli = {
+      rows: t.Lotti.rows.map(function (r) {
+        return { row: null, data: { id: firstBoxId(r.data.id), lotId: r.data.id, locationId: r.data.locationId, qty: r.data.qty } }
+      }),
+    }
+    t.Lotti.rows.forEach(function (r) {
+      delete r.data.qty
+      delete r.data.locationId
+    })
+  }
   return t
+}
+
+/** Як firstBoxId у seed.ts: перша коробка партії — `<id партії>-1`. */
+function firstBoxId(lotId) {
+  return lotId + '-1'
 }
 
 function datas(table) {
@@ -247,6 +289,9 @@ function loadState() {
     zones: datas(t.Zone),
     locations: datas(t.Posizioni),
     lots: datas(t.Lotti),
+    boxes: datas(t.Colli),
+    // Збирання (Pick) з'являться у 2b.2 — поки порожньо.
+    picks: [],
     orders: groupOrders(t.Ordini.rows),
     log: datas(t.Registro),
   }
@@ -322,14 +367,81 @@ function findRow(table, id) {
   return null
 }
 
-/** Змінює кількість партій; партії з 0 видаляє (знизу вгору, щоб не зсунути номери рядків). */
-function saveLotQuantities(lotsTable, changed) {
-  var toDelete = []
-  changed.forEach(function (r) {
-    if (r.data.qty > 0) setCell(lotsTable, r.row, 'quantita', r.data.qty)
-    else toDelete.push(r.row)
+/** Видаляє рядки вкладки знизу вгору, щоб не зсунути номери рядків. */
+function deleteRows(table, rows) {
+  rows.sort(function (a, b) { return b - a }).forEach(function (row) { table.sheet.deleteRow(row) })
+}
+
+/** Коробки партії в порядку рядків Colli. */
+function boxesOf(t, lotId) {
+  return t.Colli.rows.filter(function (r) { return r.data.lotId === lotId })
+}
+
+/**
+ * Бере qty з коробок `from` по черзі, як takeFromBoxes у reducer. Змінені
+ * коробки додає в `changed`. Повертає, скільки вдалося взяти.
+ */
+function takeFromBoxes(from, qty, changed) {
+  var left = qty
+  from.forEach(function (b) {
+    if (left <= 0) return
+    var take = Math.min(left, b.data.qty)
+    if (take <= 0) return
+    left -= take
+    b.data.qty -= take
+    if (changed.indexOf(b) === -1) changed.push(b)
   })
-  toDelete.sort(function (a, b) { return b - a }).forEach(function (row) { lotsTable.sheet.deleteRow(row) })
+  return qty - left
+}
+
+/**
+ * Записує кількість змінених коробок; порожні коробки видаляє, а партію,
+ * у якої не лишилось жодної коробки, — теж (як dropEmptyLots у reducer).
+ */
+function saveBoxes(t, changed) {
+  var emptyRows = []
+  var touchedLots = []
+  changed.forEach(function (b) {
+    if (b.data.qty > 0) setCell(t.Colli, b.row, 'quantita', b.data.qty)
+    else emptyRows.push(b.row)
+    if (touchedLots.indexOf(b.data.lotId) === -1) touchedLots.push(b.data.lotId)
+  })
+  deleteRows(t.Colli, emptyRows)
+  var lotRows = []
+  touchedLots.forEach(function (lotId) {
+    var left = boxesOf(t, lotId).some(function (b) { return b.data.qty > 0 })
+    var lot = findRow(t.Lotti, lotId)
+    if (!left && lot) lotRows.push(lot.row)
+  })
+  deleteRows(t.Lotti, lotRows)
+}
+
+/**
+ * Стара таблиця без Colli: перед першим записом створюємо вкладку Colli,
+ * переносимо туди кількість і місце кожної партії (коробка `<id>-1`) і
+ * очищаємо ці клітинки в Lotti. Тоді читаємо таблицю наново.
+ */
+function upgradeToColli(t, now) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('Colli')
+  // Заголовок і всі коробки — одним записом: якщо скрипт обірветься, вкладка
+  // не лишиться наполовину заповненою.
+  var values = [COLUMNS.Colli.map(function (c) { return c[0] })].concat(
+    t.Colli.rows.map(function (b) { return [b.data.id, b.data.lotId, b.data.locationId, b.data.qty] }),
+  )
+  sheet.getRange(1, 1, values.length, values[0].length).setValues(values)
+  // Лише тепер чистимо Lotti: старі цифри не плутатимуть людей. Рядки, що не
+  // отримали коробки (нуль або без місця), видаляємо — як і читання їх відкидало.
+  var lotti = readTable('Lotti')
+  var kept = t.Lotti.rows.map(function (r) { return r.row })
+  var dropRows = []
+  lotti.rows.forEach(function (r) {
+    if (kept.indexOf(r.row) === -1) return dropRows.push(r.row)
+    setCell(lotti, r.row, 'quantita', '')
+    setCell(lotti, r.row, 'posizione', '')
+  })
+  deleteRows(lotti, dropRows)
+  writeLog(t, now, 'Creata la scheda Colli: ' + t.Colli.rows.length + ' colli dai lotti esistenti')
+  return loadTables()
 }
 
 /** Кількість з запиту → додатне число (рядок чи формула в таблицю не потрапить). */
@@ -342,6 +454,7 @@ function positive(value, message) {
 function applyAction(action) {
   var t = loadTables()
   var now = actionTime(action.at)
+  if (t.legacy) t = upgradeToColli(t, now)
   switch (action.type) {
     case 'register': return register(t, action, now)
     case 'ship': return ship(t, action, now)
@@ -370,26 +483,28 @@ function register(t, a, now) {
     ? a.code
     : lotCode(product.abbr, producedAt, codes)
   var id = a.lotId || withSuffix(code, t.Lotti.rows.map(function (r) { return r.data.id }))
+  // Код коробки вже хтось зайняв вручну — інакше таблиця перестала б читатися.
+  if (findRow(t.Colli, firstBoxId(id))) fail('rejected', 'Codice collo già usato: ' + firstBoxId(id))
   appendRow(t.Lotti, {
     id: id,
     codice: code,
     prodotto: product.id,
-    quantita: qty,
-    posizione: locationRow.data.id,
     data_produzione: producedAt,
     scadenza: product.shelfLifeDays == null ? '' : addDays(producedAt, product.shelfLifeDays),
     litri_latte: milk,
   })
+  // Поки вся нова партія — одна коробка (поділ на кілька — 2b.2).
+  appendRow(t.Colli, { id: firstBoxId(id), lotto: id, posizione: locationRow.data.id, quantita: qty })
   writeLog(t, now, 'Prodotto lotto ' + code + ': ' + product.name + ' ' + qty + ' ' + product.unit + ' → ' + locationRow.data.name)
 }
 
 function ship(t, a, now) {
   var lot = findRow(t.Lotti, a.lotId)
   if (!lot) fail('rejected', 'Lotto sconosciuto: ' + lotLabel(a))
-  var qty = Math.min(positive(a.qty, 'Quantità non valida'), lot.data.qty)
-  lot.data.qty -= qty
-  saveLotQuantities(t.Lotti, [lot])
-  writeLog(t, now, 'Uscita ' + qty + ' dal lotto ' + lot.data.code)
+  var changed = []
+  var taken = takeFromBoxes(boxesOf(t, lot.data.id), positive(a.qty, 'Quantità non valida'), changed)
+  saveBoxes(t, changed)
+  writeLog(t, now, 'Uscita ' + taken + ' dal lotto ' + lot.data.code)
 }
 
 function move(t, a, now) {
@@ -397,7 +512,8 @@ function move(t, a, now) {
   var to = findRow(t.Posizioni, a.locationId)
   if (!lot) fail('rejected', 'Lotto sconosciuto: ' + lotLabel(a))
   if (!to) fail('rejected', 'Posizione sconosciuta: ' + a.locationId)
-  setCell(t.Lotti, lot.row, 'posizione', to.data.id)
+  // Уся партія переїжджає разом з усіма коробками; окрема коробка — moveBox (2b.2).
+  boxesOf(t, lot.data.id).forEach(function (b) { setCell(t.Colli, b.row, 'posizione', to.data.id) })
   writeLog(t, now, 'Lotto ' + lot.data.code + ' spostato in ' + to.data.name)
 }
 
@@ -410,27 +526,21 @@ function orderStatus(t, a, now) {
   // «Spedito» остаточний: товар уже списано. Повернення — окрема дія (reso, етап 5).
   if (order.status === 'spedito') fail('rejected', 'Ordine ' + order.id + ' già spedito')
   if (a.status === 'spedito') {
-    // FEFO: спершу те, що раніше спливає (для витримки — найстаріше).
+    // FEFO: спершу коробки партій, що раніше спливають (для витримки — найстаріші).
     var changed = []
-    order.lines.forEach(function (line) {
-      var left = line.qty
-      var candidates = t.Lotti.rows
-        .filter(function (r) { return r.data.productId === line.productId })
-        .sort(function (x, y) {
-          var a1 = x.data.expiresAt || x.data.producedAt
-          var b1 = y.data.expiresAt || y.data.producedAt
-          return a1 < b1 ? -1 : a1 > b1 ? 1 : 0
-        })
-      candidates.forEach(function (c) {
-        if (left <= 0) return
-        var take = Math.min(left, c.data.qty)
-        if (take <= 0) return
-        left -= take
-        c.data.qty -= take
-        if (changed.indexOf(c) === -1) changed.push(c)
-      })
+    var fefo = t.Lotti.rows.slice().sort(function (x, y) {
+      var a1 = x.data.expiresAt || x.data.producedAt
+      var b1 = y.data.expiresAt || y.data.producedAt
+      return a1 < b1 ? -1 : a1 > b1 ? 1 : 0
     })
-    saveLotQuantities(t.Lotti, changed)
+    order.lines.forEach(function (line) {
+      var from = []
+      fefo.forEach(function (l) {
+        if (l.data.productId === line.productId) from = from.concat(boxesOf(t, l.data.id))
+      })
+      takeFromBoxes(from, line.qty, changed)
+    })
+    saveBoxes(t, changed)
     writeLog(t, now, 'Spedito ordine ' + order.id + ' a ' + order.client)
   }
   orderRows.forEach(function (r) { setCell(t.Ordini, r.row, 'stato', a.status) })

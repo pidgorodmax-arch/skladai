@@ -176,8 +176,8 @@ Telegram. Ключі — лише в GitHub Secrets, ніколи у фронт�
 - [x] 2.4 SheetsSource і налаштування (`sheetsSource.ts`, `settings.ts`, сторінка `#/impostazioni`)
 - [x] 2.5 Офлайн-черга (`queuedSource.ts`; час і id дії; «non sincronizzato»)
 - [x] 2.6 Внутрішній ID партії (`Lot.id` від телефона, `Lot.code` для людей; v3; колонка `Lotti.codice`)
-- [x] 2b.1 Модель коробок (`Box`, `Pick` у `types.ts` v4; партія = сума коробок — `lotQty`, `lotStock`; міграція v3→v4; демо з коробками). Лише застосунок: таблиця поки v3 — див. 2b.1a
-- [ ] 2b.1a Вкладка `Colli` у таблиці й Apps Script
+- [x] 2b.1 Модель коробок (`Box`, `Pick` у `types.ts` v4; партія = сума коробок — `lotQty`, `lotStock`; міграція v3→v4; демо з коробками)
+- [x] 2b.1a Вкладка `Colli` у таблиці й Apps Script (`Code.gs` v4; стара таблиця читається, при першому записі скрипт сам створює `Colli`)
 - [ ] Етап 2b — решта (2b.2–2b.8)
 - [ ] Етап 3
 - [ ] Етап 4

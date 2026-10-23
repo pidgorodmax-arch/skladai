@@ -55,7 +55,7 @@ describe('SheetsSource: load', () => {
     const { fetchFn, sheets } = fakeGoogle()
     const source = createSheetsSource(settings, fetchFn)
     await source.load()
-    sheets.Lotti.values[1][COLUMNS.Lotti.findIndex((c) => c[0] === 'quantita')] = 7
+    sheets.Colli.values[1][COLUMNS.Colli.findIndex((c) => c[0] === 'quantita')] = 7
     expect(lotQty(await source.load(), 'MO-NEW')).toBe(7)
   })
 

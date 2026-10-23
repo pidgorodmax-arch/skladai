@@ -7,22 +7,15 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import sheetsMd from '../../docs/sheets.md?raw'
-import { migrate } from './migrate'
 import { reducer, type Action } from './reducer'
 import { lotQty } from './selectors'
 import { TEST_NOW, makeState } from './testState'
-import { COLUMNS, TOKEN, loadScript, toSheets, type Script } from './fakeAppsScript'
+import { COLUMNS, TOKEN, loadScript, toLegacySheets, toSheets, type Script } from './fakeAppsScript'
 
 const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x))
 
-/**
- * Відповідь doGet. Скрипт поки віддає стан v3 (кількість і стелаж у партії);
- * застосунок перетворює його міграцією v3→v4 — тут робимо так само, як
- * sheetsSource.load(), і порівнюємо вже з v4-станом reducer.
- */
 function get(script: Script, token = TOKEN) {
-  const body = JSON.parse(script.doGet({ parameter: { token } }).text)
-  return body.state ? { ...body, state: migrate(body.state) } : body
+  return JSON.parse(script.doGet({ parameter: { token } }).text)
 }
 
 function post(script: Script, action: unknown, token = TOKEN) {
@@ -231,6 +224,106 @@ describe('Apps Script: doPost дає той самий результат, що 
     for (const [action, error] of bad) expect(post(script, action)).toEqual({ ok: false, error, code: 'rejected' })
     expect(post(script, { type: 'ship', lotId: 'YB-1', qty: 1 }, 'sbagliato')).toEqual({ ok: false, error: 'Token non valido', code: 'auth' })
     expect(get(script).state).toEqual(before)
+  })
+})
+
+describe('Apps Script: коробки (Colli, 2b.1a)', () => {
+  /** MZ-1 (20 кг) у трьох коробках: 12 на C, 5 і 3 на B. */
+  function split() {
+    const state = makeState()
+    state.boxes = state.boxes.flatMap((b) =>
+      b.lotId === 'MZ-1'
+        ? [{ ...b, qty: 12 }, { id: 'MZ-1-2', lotId: 'MZ-1', locationId: 'B', qty: 5 }, { id: 'MZ-1-3', lotId: 'MZ-1', locationId: 'B', qty: 3 }]
+        : [b],
+    )
+    return state
+  }
+
+  it('партія в кількох коробках: списання, переміщення і spedito — як у reducer', () => {
+    const actions: Action[] = [
+      { type: 'ship', lotId: 'MZ-1', qty: 14 }, // 12 з першої (рядок зникає) + 2 з другої
+      { type: 'move', lotId: 'MZ-1', locationId: 'A' }, // обидві решта коробки
+      { type: 'orderStatus', orderId: 'O2', status: 'spedito' }, // 10 кг: 6 з MZ-1 (партія зникає) + 4 з MZ-2
+    ]
+    const { sheets, script } = setup(split())
+    let state = split()
+    for (const action of actions) {
+      state = reducer(state, action)
+      expect(post(script, action)).toEqual({ ok: true })
+      expect(get(script).state).toEqual(plain(state))
+    }
+    expect(sheets.Colli.values.slice(1).map((r) => r[0])).toEqual(['MO-NEW-1', 'MO-OLD-1', 'MZ-2-1', 'YB-1-1'])
+    expect(sheets.Lotti.values.slice(1).map((r) => r[0])).not.toContain('MZ-1')
+  })
+
+  it('код першої коробки вже зайнятий вручну — register відхиляється, таблиця читається далі', () => {
+    const state = makeState()
+    state.boxes[0] = { ...state.boxes[0], id: 'tel-9-1' }
+    const { script } = setup(state)
+    const action: Action = { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C', lotId: 'tel-9' }
+    expect(post(script, action)).toEqual({ ok: false, error: 'Codice collo già usato: tel-9-1', code: 'rejected' })
+    expect(get(script).state).toEqual(plain(reducer(state, action)))
+  })
+
+  it('однаковий id коробки у двох рядках — помилка config з номером рядка', () => {
+    const { sheets, script } = setup()
+    sheets.Colli.values[2][0] = 'MO-NEW-1'
+    expect(get(script)).toEqual({ ok: false, error: 'Scheda «Colli», riga 3: id «MO-NEW-1» ripetuto (già alla riga 2)', code: 'config' })
+  })
+})
+
+describe('Apps Script: стара таблиця без вкладки Colli', () => {
+  function legacy() {
+    const sheets = toLegacySheets(makeState(), COLUMNS)
+    return { sheets, script: loadScript(sheets) }
+  }
+
+  it('читається: кожен рядок Lotti — одна коробка `<id>-1` (як міграція v3→v4)', () => {
+    const { script } = legacy()
+    expect(get(script)).toEqual({ ok: true, state: plain(makeState()) })
+  })
+
+  it('рядок Lotti з нулем — партії й коробки немає', () => {
+    const { sheets, script } = legacy()
+    sheets.Lotti.values[1][sheets.Lotti.values[0].indexOf('quantita')] = 0
+    expect(get(script).state.lots.map((l: { id: string }) => l.id)).not.toContain('MO-NEW')
+    expect(get(script).state.boxes.map((b: { id: string }) => b.id)).not.toContain('MO-NEW-1')
+  })
+
+  it('перший запис сам створює Colli, переносить туди кількості й очищає їх у Lotti', () => {
+    const { sheets, script } = legacy()
+    const action: Action = { type: 'ship', lotId: 'YB-1', qty: 30 }
+    expect(post(script, action)).toEqual({ ok: true })
+    const header = sheets.Colli.values[0]
+    expect(header).toEqual(['id', 'lotto', 'posizione', 'quantita'])
+    expect(sheets.Colli.values.slice(1)).toEqual(makeState().boxes.map((b) => [b.id, b.lotId, b.locationId, b.lotId === 'YB-1' ? 70 : b.qty]))
+    const lotti = sheets.Lotti.values
+    for (const name of ['quantita', 'posizione']) expect(lotti.slice(1).map((r) => r[lotti[0].indexOf(name)])).toEqual(lotti.slice(1).map(() => ''))
+    // Стан — як після тієї ж дії в застосунку, плюс запис про перенесення в журналі.
+    const expected = reducer(makeState(), action)
+    const state = get(script).state
+    expect(state.log.map((e: { text: string }) => e.text)).toEqual([
+      'Creata la scheda Colli: 5 colli dai lotti esistenti',
+      'Uscita 30 dal lotto L-0106-YB',
+    ])
+    expect({ ...state, log: [] }).toEqual(plain({ ...expected, log: [] }))
+  })
+
+  it('нуль у старій таблиці → після першого запису партії теж немає (рядок видалено)', () => {
+    const { sheets, script } = legacy()
+    sheets.Lotti.values[1][sheets.Lotti.values[0].indexOf('quantita')] = 0
+    const before = get(script).state
+    expect(post(script, { type: 'move', lotId: 'YB-1', locationId: 'A' })).toEqual({ ok: true })
+    const after = get(script).state
+    expect(after.lots.map((l: { id: string }) => l.id)).toEqual(before.lots.map((l: { id: string }) => l.id))
+    expect(sheets.Lotti.values.slice(1).map((r) => r[0])).not.toContain('MO-NEW')
+  })
+
+  it('відхилена дія все одно переносить дані в Colli, але нічого не губить', () => {
+    const { sheets, script } = legacy()
+    expect(post(script, { type: 'ship', lotId: 'немає', qty: 1 })).toMatchObject({ ok: false, code: 'rejected' })
+    expect(sheets.Colli).toBeDefined()
+    expect({ ...get(script).state, log: [] }).toEqual(plain({ ...makeState(), log: [] }))
   })
 })
 
