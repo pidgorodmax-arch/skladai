@@ -3,6 +3,7 @@ import { Link, NavLink, Route, Routes } from 'react-router-dom'
 import { useConnection } from './data/useConnection'
 import { useStore } from './data/useStore'
 import Dashboard from './pages/Dashboard'
+import Labels from './pages/Labels'
 import Orders from './pages/Orders'
 import Register from './pages/Register'
 import Settings from './pages/Settings'
@@ -38,6 +39,7 @@ export default function App() {
             <NavLink to="/magazzino" className={link}>Magazzino 3D</NavLink>
             <NavLink to="/ordini" className={link}>Ordini</NavLink>
             <NavLink to="/registra" className={link}>Registra</NavLink>
+            <NavLink to="/etichette" className={link}>Etichette</NavLink>
           </nav>
         </div>
       </header>
@@ -48,6 +50,7 @@ export default function App() {
           <Route path="/magazzino" element={<Warehouse3D />} />
           <Route path="/ordini" element={<Orders />} />
           <Route path="/registra" element={<Register />} />
+          <Route path="/etichette" element={<Labels />} />
           <Route path="/impostazioni" element={<Settings />} />
           <Route path="*" element={<Dashboard />} />
         </Routes>

@@ -141,6 +141,35 @@ footer.app-foot .foot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 footer.app-foot { max-width: 1360px; margin: 0 auto; padding: 8px 24px 32px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; color: var(--muted); font-size: 13px; }
 
+/* ---------- етикетки (2b.3) ---------- */
+.label-picks { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; border-top: 1px solid var(--line-2); }
+.label-pick { display: flex; gap: 12px; align-items: center; min-height: 44px; padding: 4px 0; border-bottom: 1px solid var(--line-2); cursor: pointer; }
+.label-pick input { width: 22px; height: 22px; flex: 0 0 auto; accent-color: var(--accent); }
+/* Етикетка в справжніх міліметрах: --w і --h задає формат. */
+.label-sheet { display: flex; flex-wrap: wrap; gap: 8px; overflow-x: auto; padding-bottom: 8px; }
+.label { width: var(--w); height: var(--h); flex: 0 0 auto; box-sizing: border-box; padding: 2mm; display: flex; gap: 2mm; align-items: center; background: #fff; color: #000; border: 1px dashed #9aa59f; overflow: hidden; font-size: calc(var(--h) * 0.085); line-height: 1.2; }
+.label svg { flex: 0 0 auto; }
+.label-text { display: flex; flex-direction: column; min-width: 0; gap: 0.4mm; }
+.label-text > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.label-title { font-size: 1.15em; }
+.label-place { font-size: 1.5em; white-space: normal; }
+.label-qty { font-size: 1.4em; font-weight: 700; }
+.label-small { font-size: 0.8em; }
+
+@media print {
+  body { background: #fff; }
+  .topbar, .app-foot, .no-print, .sync-bar, .save-error { display: none !important; }
+  .page { padding: 0; margin: 0; max-width: none; }
+  .label { border: 0; }
+  .label-sheet { gap: 0; overflow: visible; padding: 0; }
+  /* A4: сітка 3×8 по 70×37 мм (297 − 8·37 = 1 мм запасу зверху й знизу). */
+  .label-sheet.a4 { display: grid; grid-template-columns: repeat(3, var(--w)); grid-auto-rows: var(--h); padding-top: 0.5mm; }
+  .label-sheet.a4 .label:nth-child(24n) { break-after: page; }
+  /* Термопринтер: одна етикетка — одна «сторінка». */
+  .label-sheet.thermal { display: block; }
+  .label-sheet.thermal .label { break-after: page; }
+}
+
 @media (max-width: 640px) {
   .page { padding: 16px; }
   .page-head h1 { font-size: 22px; }
