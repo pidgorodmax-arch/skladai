@@ -171,7 +171,7 @@ Telegram. Ключі — лише в GitHub Secrets, ніколи у фронт�
 - [x] 2.2 Структура таблиці (`docs/sheets.md`: 6 вкладок, колонки, приклади рядків)
 - [x] 2.2a Артикули (codice, sigla) і час Europe/Rome (`types.ts` v2, `time.ts`, міграція v1→v2)
 - [x] 2.3 Apps Script (`apps-script/Code.gs`, інструкція й curl — `apps-script/README.md`; тест-договір `src/data/appsScript.test.ts`)
-- [ ] 2.4 SheetsSource і налаштування
+- [x] 2.4 SheetsSource і налаштування (`sheetsSource.ts`, `settings.ts`, сторінка `#/impostazioni`)
 - [ ] 2.5 Офлайн-черга
 - [ ] Етап 2b — коробки, сканування, збирання замовлень
 - [ ] Етап 3

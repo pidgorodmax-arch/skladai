@@ -6,89 +6,11 @@
 // повертає той самий стан. Так логіка в двох місцях не розійдеться.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import codeGs from '../../apps-script/Code.gs?raw'
 import sheetsMd from '../../docs/sheets.md?raw'
 import { reducer, type Action } from './reducer'
 import { TEST_NOW, makeState } from './testState'
-import { romeDate, romeDateTime } from './time'
-import type { AppState } from './types'
+import { COLUMNS, TOKEN, loadScript, toSheets, type Script } from './fakeAppsScript'
 
-type Cell = string | number | Date
-type Columns = Record<string, [string, string, string][]>
-
-/** Фальшива вкладка: values[0] — заголовок, далі рядки. */
-class FakeSheet {
-  values: Cell[][]
-  constructor(values: Cell[][]) {
-    this.values = values
-  }
-  getDataRange() {
-    return { getValues: () => this.values.map((r) => [...r]) }
-  }
-  appendRow(row: Cell[]) {
-    this.values.push([...row])
-  }
-  getRange(row: number, col: number) {
-    return {
-      setValue: (v: Cell) => {
-        this.values[row - 1][col - 1] = v
-      },
-    }
-  }
-  deleteRow(row: number) {
-    this.values.splice(row - 1, 1)
-  }
-}
-
-interface Script {
-  doGet(e: unknown): { text: string }
-  doPost(e: unknown): { text: string }
-  COLUMNS: Columns
-}
-
-const TOKEN = 'segreto-di-prova'
-
-/** Завантажує Code.gs з фальшивими сервісами Google. */
-function loadScript(sheets: Record<string, FakeSheet>, token: string | null = TOKEN): Script {
-  const services = {
-    SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheetByName: (n: string) => sheets[n] ?? null }) },
-    Utilities: {
-      formatDate(date: Date, tz: string, pattern: string) {
-        expect(tz).toBe('Europe/Rome')
-        if (pattern === 'yyyy-MM-dd') return romeDate(date)
-        if (pattern === "yyyy-MM-dd'T'HH:mm") return romeDateTime(date)
-        throw new Error('formato non previsto: ' + pattern)
-      },
-    },
-    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (k: string) => (k === 'TOKEN' ? token : null) }) },
-    ContentService: {
-      MimeType: { JSON: 'json' },
-      createTextOutput: (text: string) => ({ text, setMimeType: () => ({ text }) }),
-    },
-  }
-  const factory = new Function(...Object.keys(services), `${codeGs}\nreturn { doGet, doPost, COLUMNS }`)
-  return factory(...Object.values(services)) as Script
-}
-
-/** Стан застосунку → вкладки таблиці, як описано в docs/sheets.md. */
-function toSheets(state: AppState, columns: Columns): Record<string, FakeSheet> {
-  const cell = (v: unknown): Cell => (v === undefined || v === null ? '' : (v as Cell))
-  const table = (name: string, records: Record<string, unknown>[]) =>
-    new FakeSheet([columns[name].map((c) => c[0]), ...records.map((r) => columns[name].map((c) => cell(r[c[1]])))])
-  const orderRows = state.orders.flatMap((o) => o.lines.map((l) => ({ ...o, productId: l.productId, qty: l.qty })))
-  const rec = <T extends object>(xs: T[]) => xs as unknown as Record<string, unknown>[]
-  return {
-    Prodotti: table('Prodotti', rec(state.products)),
-    Zone: table('Zone', rec(state.zones)),
-    Posizioni: table('Posizioni', rec(state.locations)),
-    Lotti: table('Lotti', rec(state.lots)),
-    Ordini: table('Ordini', rec(orderRows)),
-    Registro: table('Registro', rec(state.log)),
-  }
-}
-
-/** JSON-копія: прибирає поля зі значенням undefined, як і відповідь скрипта. */
 const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x))
 
 function get(script: Script, token = TOKEN) {
@@ -99,7 +21,6 @@ function post(script: Script, action: unknown, token = TOKEN) {
   return JSON.parse(script.doPost({ postData: { contents: JSON.stringify({ token, action }) } }).text)
 }
 
-const COLUMNS = loadScript({}).COLUMNS
 
 function setup(state = makeState()) {
   const sheets = toSheets(state, COLUMNS)

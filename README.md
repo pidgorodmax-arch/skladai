@@ -18,6 +18,7 @@
 | `#/magazzino` | **Magazzino 3D** — цех у 3D (Three.js): стелажі з формами Montasio, камери, котли, рампа. Режими кольору: заповненість / вік форм / терміни. Фільтр за продуктом, переміщення і списання партій |
 | `#/ordini` | **Ordini** — статуси замовлень; «Spedito» сам списує склад (FEFO) |
 | `#/registra` | **Registra** — екран для телефона в цеху: нова партія за 20 секунд, код лоту, термін і вихід рахуються самі |
+| `#/impostazioni` | **Impostazioni** — підключення до Google Таблиці клієнта: адреса Apps Script і токен (лише на цьому пристрої); «Scollega» — назад до демо |
 
 ## Запуск локально
 
@@ -43,7 +44,9 @@ src/
     seed.ts       — демо-дані (дати відносно сьогодні)
     store.tsx     — ЄДИНЕ сховище стану: усі зміни йдуть через dispatch(...)
     source.ts     — DataSource: load() на старті, apply(action) на кожну зміну;
-                    DemoSource — localStorage (далі SheetsSource — Google Sheets)
+                    DemoSource — localStorage
+    sheetsSource.ts — SheetsSource: те саме через Apps Script (Google Таблиця)
+    settings.ts   — адреса таблиці й токен у localStorage цього пристрою
     reducer.ts    — дії і як вони змінюють стан (register, ship, move, orderStatus)
     persist.ts    — збереження в localStorage, резервна копія нечитабельних даних
     migrate.ts    — міграції: старі збережені дані → поточна версія
@@ -74,8 +77,8 @@ demo» внизу повертає демо.
 
 ## Наступні кроки
 
-1. **Справжні дані.** Додати `SheetsSource` (той самий інтерфейс, що й `DemoSource` у `source.ts`) для
-   Google Sheets (API Sistema Latteria на Apps Script) — екрани не зміняться.
+1. **Робота без мережі.** Черга дій у браузері й позначка «non sincronizzato»
+   (завдання 2.5).
 2. **AI-агент.** Невеликий серверний скрипт (як у податковому боті), що
    передає ці ж цифри в Claude API: брифінг текстом, вільні питання,
    повідомлення в Telegram о 6:30.
