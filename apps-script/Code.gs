@@ -423,16 +423,23 @@ function saveBoxes(t, changed) {
  */
 function upgradeToColli(t, now) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('Colli')
-  sheet.appendRow(COLUMNS.Colli.map(function (c) { return c[0] }))
-  t.Colli.rows.forEach(function (b) {
-    sheet.appendRow([b.data.id, b.data.lotId, b.data.locationId, b.data.qty])
-  })
-  // Усі рядки Lotti (зокрема відкинуті з нулем) — щоб старі цифри не плутали людей.
+  // Заголовок і всі коробки — одним записом: якщо скрипт обірветься, вкладка
+  // не лишиться наполовину заповненою.
+  var values = [COLUMNS.Colli.map(function (c) { return c[0] })].concat(
+    t.Colli.rows.map(function (b) { return [b.data.id, b.data.lotId, b.data.locationId, b.data.qty] }),
+  )
+  sheet.getRange(1, 1, values.length, values[0].length).setValues(values)
+  // Лише тепер чистимо Lotti: старі цифри не плутатимуть людей. Рядки, що не
+  // отримали коробки (нуль або без місця), видаляємо — як і читання їх відкидало.
   var lotti = readTable('Lotti')
+  var kept = t.Lotti.rows.map(function (r) { return r.row })
+  var dropRows = []
   lotti.rows.forEach(function (r) {
+    if (kept.indexOf(r.row) === -1) return dropRows.push(r.row)
     setCell(lotti, r.row, 'quantita', '')
     setCell(lotti, r.row, 'posizione', '')
   })
+  deleteRows(lotti, dropRows)
   writeLog(t, now, 'Creata la scheda Colli: ' + t.Colli.rows.length + ' colli dai lotti esistenti')
   return loadTables()
 }
@@ -476,6 +483,8 @@ function register(t, a, now) {
     ? a.code
     : lotCode(product.abbr, producedAt, codes)
   var id = a.lotId || withSuffix(code, t.Lotti.rows.map(function (r) { return r.data.id }))
+  // Код коробки вже хтось зайняв вручну — інакше таблиця перестала б читатися.
+  if (findRow(t.Colli, firstBoxId(id))) fail('rejected', 'Codice collo già usato: ' + firstBoxId(id))
   appendRow(t.Lotti, {
     id: id,
     codice: code,

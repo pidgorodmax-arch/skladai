@@ -22,10 +22,17 @@ export class FakeSheet {
   appendRow(row: Cell[]) {
     this.values.push([...row])
   }
-  getRange(row: number, col: number) {
+  getRange(row: number, col: number, numRows = 1, numCols = 1) {
     return {
       setValue: (v: Cell) => {
         this.values[row - 1][col - 1] = v
+      },
+      setValues: (vs: Cell[][]) => {
+        if (vs.length !== numRows || vs.some((r) => r.length !== numCols)) throw new Error('setValues: dimensioni diverse')
+        vs.forEach((r, i) => {
+          this.values[row - 1 + i] ??= []
+          r.forEach((v, j) => (this.values[row - 1 + i][col - 1 + j] = v))
+        })
       },
     }
   }

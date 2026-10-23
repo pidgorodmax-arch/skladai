@@ -78,6 +78,8 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!product || !location || action.qty <= 0) return state
       // Ця партія вже є (повтор тієї самої дії) — другу не створюємо.
       if (action.lotId && state.lots.some((l) => l.id === action.lotId)) return state
+      // Код її коробки вже зайнятий (вручну в таблиці) — як і Apps Script, не створюємо.
+      if (action.lotId && state.boxes.some((b) => b.id === firstBoxId(action.lotId!))) return state
       // Дата за Римом (як на екрані Registra), а не UTC і не пояс пристрою:
       // після півночі в Італії UTC ще показує вчорашній день.
       const producedAt = action.at ? action.at.slice(0, 10) : romeDate(new Date())

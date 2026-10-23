@@ -256,6 +256,15 @@ describe('Apps Script: коробки (Colli, 2b.1a)', () => {
     expect(sheets.Lotti.values.slice(1).map((r) => r[0])).not.toContain('MZ-1')
   })
 
+  it('код першої коробки вже зайнятий вручну — register відхиляється, таблиця читається далі', () => {
+    const state = makeState()
+    state.boxes[0] = { ...state.boxes[0], id: 'tel-9-1' }
+    const { script } = setup(state)
+    const action: Action = { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C', lotId: 'tel-9' }
+    expect(post(script, action)).toEqual({ ok: false, error: 'Codice collo già usato: tel-9-1', code: 'rejected' })
+    expect(get(script).state).toEqual(plain(reducer(state, action)))
+  })
+
   it('однаковий id коробки у двох рядках — помилка config з номером рядка', () => {
     const { sheets, script } = setup()
     sheets.Colli.values[2][0] = 'MO-NEW-1'
@@ -298,6 +307,16 @@ describe('Apps Script: стара таблиця без вкладки Colli', (
       'Uscita 30 dal lotto L-0106-YB',
     ])
     expect({ ...state, log: [] }).toEqual(plain({ ...expected, log: [] }))
+  })
+
+  it('нуль у старій таблиці → після першого запису партії теж немає (рядок видалено)', () => {
+    const { sheets, script } = legacy()
+    sheets.Lotti.values[1][sheets.Lotti.values[0].indexOf('quantita')] = 0
+    const before = get(script).state
+    expect(post(script, { type: 'move', lotId: 'YB-1', locationId: 'A' })).toEqual({ ok: true })
+    const after = get(script).state
+    expect(after.lots.map((l: { id: string }) => l.id)).toEqual(before.lots.map((l: { id: string }) => l.id))
+    expect(sheets.Lotti.values.slice(1).map((r) => r[0])).not.toContain('MO-NEW')
   })
 
   it('відхилена дія все одно переносить дані в Colli, але нічого не губить', () => {
