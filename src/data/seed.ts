@@ -23,14 +23,18 @@ const products: Product[] = [
   { id: 'latte', code: 'ART-0002', abbr: 'LT', name: 'Latte fresco', unit: 'L', spacePerUnit: 1, shelfLifeDays: 4, pricePerUnit: 1.6, storage: 'cold' },
 ]
 
+/** `base`, а якщо він уже зайнятий — `base2`, `base3`, … */
+export function withSuffix(base: string, existing: string[]): string {
+  let value = base
+  let n = 2
+  while (existing.includes(value)) value = `${base}${n++}`
+  return value
+}
+
 /** Код лоту: «L-ДДММ-сигла», за повтору того ж дня — суфікс 2, 3, … */
 export function lotCode(abbr: string, producedAt: string, existing: string[]): string {
   const [, mm, dd] = producedAt.split('-')
-  const base = `L-${dd}${mm}-${abbr || 'XX'}`
-  let code = base
-  let n = 2
-  while (existing.includes(code)) code = `${base}${n++}`
-  return code
+  return withSuffix(`L-${dd}${mm}-${abbr || 'XX'}`, existing)
 }
 
 export function expiryFor(product: Product, producedAt: string): string | null {
@@ -44,8 +48,10 @@ export function createSeed(): AppState {
   const add = (productId: string, qty: number, locationId: string, producedDaysAgo: number) => {
     const product = products.find((p) => p.id === productId)!
     const producedAt = isoDay(-producedDaysAgo)
+    const code = lotCode(product.abbr, producedAt, lots.map((l) => l.code))
     lots.push({
-      id: lotCode(product.abbr, producedAt, lots.map((l) => l.id)),
+      id: code, // демо: сталий ID; нові партії отримують ID від телефона (stamp)
+      code,
       productId,
       qty,
       locationId,

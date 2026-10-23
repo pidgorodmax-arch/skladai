@@ -107,7 +107,7 @@ describe('Apps Script: doPost дає той самий результат, що 
     const action: Action = { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C' }
     post(script, action)
     const state = get(script).state
-    expect(state.lots.at(-1)).toMatchObject({ id: 'L-1606-MZ', producedAt: '2026-06-16', expiresAt: '2026-06-23' })
+    expect(state.lots.at(-1)).toMatchObject({ code: 'L-1606-MZ', producedAt: '2026-06-16', expiresAt: '2026-06-23' })
     expect(state.log.at(-1).at).toBe('2026-06-16T00:30')
     expect(state).toEqual(plain(reducer(makeState(), action)))
   })
@@ -119,7 +119,7 @@ describe('Apps Script: doPost дає той самий результат, що 
     const action: Action = { type: 'register', productId: 'mozzarella', qty: 2, locationId: 'C', at: '2026-06-15T23:50' }
     expect(post(script, action)).toEqual({ ok: true })
     const state = get(script).state
-    expect(state.lots.at(-1)).toMatchObject({ id: 'L-1506-MZ', producedAt: '2026-06-15', expiresAt: '2026-06-22' })
+    expect(state.lots.at(-1)).toMatchObject({ code: 'L-1506-MZ', producedAt: '2026-06-15', expiresAt: '2026-06-22' })
     expect(state.log.at(-1).at).toBe('2026-06-15T23:50')
     expect(state).toEqual(plain(reducer(makeState(), action)))
   })
@@ -133,6 +133,47 @@ describe('Apps Script: doPost дає той самий результат, що 
     // інша дія з іншим id — виконується
     post(script, { ...action, id: 'azione-2' })
     expect(get(script).state.lots.find((l: { id: string }) => l.id === 'YB-1').qty).toBe(80)
+  })
+
+  it('повтор register з тим самим ID партії не створює другу (навіть коли пам\'ять CacheService очищена)', () => {
+    const { script } = setup()
+    const action: Action = { type: 'register', productId: 'mozzarella', qty: 4, locationId: 'C', lotId: 'p-1', code: 'L-1506-MZ', id: 'a-1' }
+    post(script, action)
+    post(script, { ...action, id: 'a-2' }) // інший id дії — CacheService не допоможе, допоможе ID партії
+    const lots = get(script).state.lots.filter((l: { id: string }) => l.id === 'p-1')
+    expect(lots).toEqual([expect.objectContaining({ id: 'p-1', code: 'L-1506-MZ', qty: 4 })])
+    expect(get(script).state).toEqual(plain(reducer(reducer(makeState(), action), { ...action, id: 'a-2' })))
+  })
+
+  it('код, зайнятий іншою партією, отримує суфікс; ID лишається від телефона', () => {
+    const { script } = setup()
+    const first: Action = { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C', lotId: 'tel-a', code: 'L-1506-MZ' }
+    const second: Action = { type: 'register', productId: 'mozzarella', qty: 2, locationId: 'C', lotId: 'tel-b', code: 'L-1506-MZ' }
+    post(script, first)
+    post(script, second)
+    const state = get(script).state
+    expect(state.lots.slice(-2).map((l: { id: string; code: string }) => [l.id, l.code])).toEqual([
+      ['tel-a', 'L-1506-MZ'],
+      ['tel-b', 'L-1506-MZ2'],
+    ])
+    expect(state).toEqual(plain(reducer(reducer(makeState(), first), second)))
+  })
+
+  it('ID партії з дивними символами (формула тощо) відхиляється', () => {
+    const { script } = setup()
+    expect(post(script, { type: 'register', productId: 'mozzarella', qty: 1, locationId: 'C', lotId: '=IMPORTXML("x")' })).toEqual({
+      ok: false,
+      error: 'ID lotto non valido',
+      code: 'rejected',
+    })
+  })
+
+  it('партія, внесена вручну без id, отримує ID = codice', () => {
+    const { sheets, script } = setup()
+    sheets.Lotti.values[1][COLUMNS.Lotti.findIndex((c) => c[0] === 'id')] = ''
+    const lot = get(script).state.lots[0]
+    expect(lot.id).toBe(lot.code)
+    expect(lot.code).toBe('L-1605-MO')
   })
 
   it('некоректний at або at з майбутнього (збитий годинник) ігнорується — береться поточний час', () => {

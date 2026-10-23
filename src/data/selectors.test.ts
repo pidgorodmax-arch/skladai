@@ -62,7 +62,7 @@ describe('заповненість', () => {
 
   it('occupancy не перевищує 100% навіть при переповненні', () => {
     const state = makeState()
-    state.lots.push({ id: 'X', productId: 'montasio', qty: 500, locationId: 'A', producedAt: '2026-06-01', expiresAt: null })
+    state.lots.push({ id: 'X', code: 'L-0106-MO', productId: 'montasio', qty: 500, locationId: 'A', producedAt: '2026-06-01', expiresAt: null })
     expect(occupancy(state, loc('A'))).toBe(100)
   })
 
@@ -115,7 +115,7 @@ describe('терміни придатності', () => {
 
   it('expiringLots показує й прострочені партії', () => {
     const state = makeState()
-    state.lots.push({ id: 'OLD', productId: 'mozzarella', qty: 1, locationId: 'C', producedAt: '2026-06-01', expiresAt: '2026-06-08' })
+    state.lots.push({ id: 'OLD', code: 'L-0106-MZ', productId: 'mozzarella', qty: 1, locationId: 'C', producedAt: '2026-06-01', expiresAt: '2026-06-08' })
     expect(expiringLots(state, T)[0].id).toBe('OLD')
   })
 })

@@ -56,7 +56,16 @@ export interface Zone {
 }
 
 export interface Lot {
+  /**
+   * Внутрішній унікальний ID: створює телефон у момент запису, без мережі.
+   * Списання й переміщення посилаються лише на нього. Людям не показується.
+   */
   id: string
+  /**
+   * Код партії для людей і етикеток: `L-ДДММ-сигла` (`L-2310-MZ`). Якщо два
+   * телефони офлайн дали однаковий код, таблиця додає суфікс (`…MZ2`).
+   */
+  code: string
   productId: string
   qty: number
   locationId: string
@@ -85,7 +94,7 @@ export interface Order {
  * Версія формату даних. Збільшуй її, коли змінюєш AppState так, що старі
  * збережені дані вже не підходять, і додай крок у MIGRATIONS (migrate.ts).
  */
-export const STATE_VERSION = 2
+export const STATE_VERSION = 3
 
 export interface AppState {
   version: typeof STATE_VERSION
