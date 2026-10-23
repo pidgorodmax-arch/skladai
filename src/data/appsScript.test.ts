@@ -312,6 +312,21 @@ describe('Apps Script: збирання (Prelievi, 2b.2)', () => {
     post(script, { ...action, id: 'a-2' })
     expect(get(script).state).toEqual(plain(reducer(makeState(), action)))
   })
+
+  it('повтор placeBox, коли вихідна коробка вже порожня, — тихий no-op, а не помилка', () => {
+    const { script } = setup()
+    const action: Action = { type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 20, locationId: 'B', boxId: 'b-2', id: 'a-1' }
+    expect(post(script, action)).toEqual({ ok: true })
+    expect(post(script, { ...action, id: 'a-2' })).toEqual({ ok: true })
+    expect(get(script).state).toEqual(plain(reducer(makeState(), action)))
+  })
+
+  it('більше, ніж замовлено в рядку (вага «плаває»), — як у reducer', () => {
+    const { script } = setup()
+    const action: Action = { type: 'pick', orderId: 'O2', boxId: 'MZ-1-1', qty: 10.4 }
+    expect(post(script, action)).toEqual({ ok: true })
+    expect(get(script).state).toEqual(plain(reducer(makeState(), action)))
+  })
 })
 
 describe('Apps Script: стара таблиця без вкладки Colli', () => {

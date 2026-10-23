@@ -151,12 +151,13 @@ export function reducer(state: AppState, action: Action): AppState {
       }
     }
     case 'placeBox': {
+      // Коробка з цим кодом уже є (повтор тієї самої дії) — другу не створюємо.
+      // Перевіряємо першим: вихідна коробка могла вже спорожніти.
+      if (action.boxId && state.boxes.some((b) => b.id === action.boxId)) return state
       const from = state.boxes.find((b) => b.id === action.fromBoxId)
       const to = state.locations.find((l) => l.id === action.locationId)
       // Не можна відділити більше, ніж є в коробці.
       if (!from || !to || !(action.qty > 0) || action.qty > from.qty) return state
-      // Коробка з цим кодом уже є (повтор тієї самої дії) — другу не створюємо.
-      if (action.boxId && state.boxes.some((b) => b.id === action.boxId)) return state
       const lot = state.lots.find((l) => l.id === from.lotId)
       const product = state.products.find((p) => p.id === lot?.productId)
       if (!lot || !product) return state
@@ -191,6 +192,8 @@ export function reducer(state: AppState, action: Action): AppState {
       const lot = state.lots.find((l) => l.id === box.lotId)
       const product = state.products.find((p) => p.id === lot?.productId)
       // Коробка має бути з продуктом, який є в замовленні; не більше, ніж у коробці.
+      // Більше, ніж замовлено в рядку, — можна: вага упаковок «плаває» (10,3 кг на 10).
+      // Зайве видно в orderProgress (picked > ordered).
       if (!lot || !product || !order.lines.some((l) => l.productId === product.id)) return state
       if (!(action.qty > 0) || action.qty > box.qty) return state
       const boxes = state.boxes.map((b) => (b.id === box.id ? { ...b, qty: b.qty - action.qty } : b)).filter((b) => b.qty > 0)

@@ -220,10 +220,13 @@ describe('placeBox — нова коробка з частини іншої', ()
     expect(reducer(state, { type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 1, locationId: 'Z' })).toBe(state)
   })
 
-  it('повтор з тим самим boxId не відділяє вдруге', () => {
+  it('повтор з тим самим boxId не відділяє вдруге — навіть коли вихідна коробка вже порожня', () => {
     const action = { type: 'placeBox', fromBoxId: 'MZ-1-1', qty: 5, locationId: 'B', boxId: 'b-1' } as const
     const once = reducer(makeState(), action)
     expect(reducer(once, action)).toBe(once)
+    const all = { ...action, qty: 20, boxId: 'b-2' }
+    const moved = reducer(makeState(), all) // MZ-1-1 спорожніла і зникла
+    expect(reducer(moved, all)).toBe(moved)
   })
 })
 
@@ -256,6 +259,12 @@ describe('pick — збирання з коробки під замовленн�
   it('не можна взяти більше, ніж у коробці', () => {
     const state = makeState()
     expect(reducer(state, { type: 'pick', orderId: 'O1', boxId: 'MZ-1-1', qty: 21 })).toBe(state)
+  })
+
+  it('більше, ніж замовлено в рядку, — можна (вага упаковок «плаває»)', () => {
+    // O2: 10 кг, узяли 10,4 — у межах коробки.
+    const next = reducer(makeState(), { type: 'pick', orderId: 'O2', boxId: 'MZ-1-1', qty: 10.4 })
+    expect(next.picks[0].qty).toBe(10.4)
   })
 
   it('уся коробка — коробка й партія зникають, а в Pick лишаються коробка й лот', () => {

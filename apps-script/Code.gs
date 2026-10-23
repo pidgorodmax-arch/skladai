@@ -561,15 +561,16 @@ function move(t, a, now) {
 }
 
 function placeBox(t, a, now) {
+  if (a.boxId != null && !(typeof a.boxId === 'string' && LOT_ID.test(a.boxId))) fail('rejected', 'Codice collo non valido')
+  // Коробка з цим кодом уже є — це повтор тієї самої дії. Перевіряємо першим:
+  // вихідна коробка могла вже спорожніти.
+  if (a.boxId && findRow(t.Colli, a.boxId)) return
   var from = findRow(t.Colli, a.fromBoxId)
   var to = findRow(t.Posizioni, a.locationId)
   if (!from) fail('rejected', 'Collo sconosciuto: ' + a.fromBoxId)
   if (!to) fail('rejected', 'Posizione sconosciuta: ' + a.locationId)
   var qty = positive(a.qty, 'Quantità non valida')
   if (qty > from.data.qty) fail('rejected', 'Nel collo ci sono solo ' + from.data.qty)
-  if (a.boxId != null && !(typeof a.boxId === 'string' && LOT_ID.test(a.boxId))) fail('rejected', 'Codice collo non valido')
-  // Коробка з цим кодом уже є — це повтор тієї самої дії.
-  if (a.boxId && findRow(t.Colli, a.boxId)) return
   var lot = findRow(t.Lotti, from.data.lotId)
   var product = lot && findRow(t.Prodotti, lot.data.productId)
   if (!lot || !product) fail('rejected', 'Lotto sconosciuto: ' + from.data.lotId)
@@ -606,7 +607,7 @@ function pick(t, a, now) {
   var inOrder = order.lines.some(function (l) { return l.productId === product.data.id })
   if (!inOrder) fail('rejected', product.data.name + ' non è nell\'ordine ' + order.id)
   var qty = positive(a.qty, 'Quantità non valida')
-  // Не можна взяти більше, ніж у коробці.
+  // Не можна взяти більше, ніж у коробці. Більше, ніж замовлено, — можна (вага «плаває»).
   if (qty > box.data.qty) fail('rejected', 'Nel collo ci sono solo ' + box.data.qty)
   box.data.qty -= qty
   saveBoxes(t, [box])

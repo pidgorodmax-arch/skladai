@@ -10,11 +10,6 @@ import { STATE_VERSION } from './types'
  * Стан у форматі v3 (до 2b.1): кількість і стелаж у самій партії, без коробок.
  * Саме такий стан і досі віддає Apps Script.
  */
-/** Стан у форматі v4 (до 2b.2): Pick без lotId і method. */
-function v4State(picks: Record<string, unknown>[] = []): Record<string, unknown> {
-  return { ...makeState(), version: 4, picks }
-}
-
 function v3State(): Record<string, unknown> {
   const { boxes: _boxes, picks: _picks, ...state } = makeState()
   return {
@@ -24,6 +19,11 @@ function v3State(): Record<string, unknown> {
       id, code, productId, qty, locationId, producedAt, expiresAt,
     })),
   }
+}
+
+/** Стан у форматі v4 (до 2b.2): Pick без lotId і method. */
+function v4State(picks: Record<string, unknown>[] = []): Record<string, unknown> {
+  return { ...makeState(), version: 4, picks }
 }
 
 describe('migrate', () => {
