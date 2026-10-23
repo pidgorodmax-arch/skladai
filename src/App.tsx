@@ -3,13 +3,14 @@ import { Link, NavLink, Route, Routes } from 'react-router-dom'
 import { useConnection } from './data/useConnection'
 import { useStore } from './data/useStore'
 import Dashboard from './pages/Dashboard'
-import Labels from './pages/Labels'
 import Orders from './pages/Orders'
 import Register from './pages/Register'
 import Settings from './pages/Settings'
 
 // 3D-сцена важка (Three.js) — вантажимо її лише коли відкривають карту.
 const Warehouse3D = lazy(() => import('./pages/Warehouse3D'))
+// Етикетки тягнуть бібліотеку QR — теж лише коли їх відкривають.
+const Labels = lazy(() => import('./pages/Labels'))
 
 function Logo() {
   return (
@@ -44,7 +45,7 @@ export default function App() {
         </div>
       </header>
 
-      <Suspense fallback={<div className="page muted">Caricamento della mappa 3D…</div>}>
+      <Suspense fallback={<div className="page muted">Caricamento…</div>}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/magazzino" element={<Warehouse3D />} />

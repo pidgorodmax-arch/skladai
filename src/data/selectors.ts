@@ -205,11 +205,14 @@ export function boxLabels(state: AppState): BoxLabel[] {
   const pm = productMap(state)
   const lm = locationMap(state)
   const lots = new Map(state.lots.map((l) => [l.id, l]))
+  // Коробки кожної партії — один прохід, а не фільтр на кожну коробку.
+  const byLot = new Map<string, Box[]>()
+  for (const b of state.boxes) byLot.set(b.lotId, [...(byLot.get(b.lotId) ?? []), b])
   return state.boxes.flatMap((box) => {
     const lot = lots.get(box.lotId)
     const product = lot && pm[lot.productId]
     if (!lot || !product) return []
-    const siblings = state.boxes.filter((b) => b.lotId === lot.id)
+    const siblings = byLot.get(lot.id)!
     return [{ box, lot, product, location: lm[box.locationId], index: siblings.indexOf(box) + 1, count: siblings.length }]
   })
 }
