@@ -27,10 +27,12 @@ function loc(id: string) {
 }
 
 describe('дати', () => {
-  it('startOfDay бере місцевий календарний день і повертає північ за UTC', () => {
-    // 23:30 і 00:30 одного місцевого дня → той самий день
-    expect(startOfDay(new Date(2026, 5, 15, 0, 30))).toEqual(T)
-    expect(startOfDay(new Date(2026, 5, 15, 23, 30))).toEqual(T)
+  it('startOfDay бере календарний день за Римом і повертає північ за UTC', () => {
+    // 00:30 і 23:30 за Римом 15.06 (влітку Рим = UTC+2) → той самий день
+    expect(startOfDay(new Date('2026-06-14T22:30:00Z'))).toEqual(T)
+    expect(startOfDay(new Date('2026-06-15T21:30:00Z'))).toEqual(T)
+    // 00:30 16.06 у Римі — уже наступний день, хоча за UTC ще 15.06
+    expect(startOfDay(new Date('2026-06-15T22:30:00Z'))).toEqual(new Date('2026-06-16T00:00:00Z'))
     expect(isoDate(T)).toBe('2026-06-15')
   })
 

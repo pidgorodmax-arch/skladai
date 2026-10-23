@@ -3,7 +3,7 @@
 // застосовуватиме DataSource (Google Sheets) і AI-агент.
 
 import { createSeed, expiryFor, lotCode } from './seed'
-import { isoDate, startOfDay } from './selectors'
+import { romeDate, romeDateTime } from './time'
 import type { AppState, Lot, OrderStatus } from './types'
 
 export type Action =
@@ -14,7 +14,7 @@ export type Action =
   | { type: 'reset' }
 
 function now(): string {
-  return new Date().toISOString().slice(0, 16)
+  return romeDateTime(new Date())
 }
 
 export function reducer(state: AppState, action: Action): AppState {
@@ -23,11 +23,11 @@ export function reducer(state: AppState, action: Action): AppState {
       const product = state.products.find((p) => p.id === action.productId)
       const location = state.locations.find((l) => l.id === action.locationId)
       if (!product || !location || action.qty <= 0) return state
-      // Місцева дата (як на екрані Registra), а не UTC: після півночі в Італії
-      // UTC ще показує вчорашній день.
-      const producedAt = isoDate(startOfDay(new Date()))
+      // Дата за Римом (як на екрані Registra), а не UTC і не пояс пристрою:
+      // після півночі в Італії UTC ще показує вчорашній день.
+      const producedAt = romeDate(new Date())
       const lot: Lot = {
-        id: lotCode(product.id, producedAt, state.lots.map((l) => l.id)),
+        id: lotCode(product.abbr, producedAt, state.lots.map((l) => l.id)),
         productId: product.id,
         qty: action.qty,
         locationId: location.id,

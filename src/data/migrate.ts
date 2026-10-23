@@ -14,12 +14,33 @@ export type VersionedData = { version: number } & Record<string, unknown>
 /** Один крок: дані версії N → дані версії N + 1. */
 export type Migration = (old: VersionedData) => VersionedData
 
+/** Сигли, які до v2 були зашиті в коді (seed.ts), — для старих збережених даних. */
+const LEGACY_ABBR: Record<string, string> = {
+  montasio: 'MO', mozzarella: 'MZ', ricotta: 'RI', yogurt: 'YB', kefir: 'KF', burro: 'BU', latte: 'LT',
+}
+
+/** Сигла для продукту без неї: зі старої таблиці, інакше перші дві літери `id`, інакше XX. */
+export function fallbackAbbr(productId: string): string {
+  return LEGACY_ABBR[productId] ?? (productId.replace(/[^a-z]/gi, '').slice(0, 2).toUpperCase() || 'XX')
+}
+
 /**
  * Кроки міграції. Ключ — версія, З ЯКОЇ переходимо: MIGRATIONS[1] робить v1 → v2.
- * Поки формат ще не змінювався, кроків немає. Приклад майбутнього кроку:
- *   1: (old) => ({ ...old, version: 2, boxes: [] }),
  */
-export const MIGRATIONS: Record<number, Migration> = {}
+export const MIGRATIONS: Record<number, Migration> = {
+  // v2 (2.2a): у продукту з'явились `abbr` (сигла для коду лоту) і
+  // необов'язковий `code`. Старим продуктам дописуємо сиглу; `code` лишається
+  // порожнім, нових продуктів міграція не додає.
+  1: (old) => ({
+    ...old,
+    version: 2,
+    products: Array.isArray(old.products)
+      ? old.products.map((p: unknown) =>
+          isRecord(p) && typeof p.abbr !== 'string' ? { ...p, abbr: fallbackAbbr(String(p.id ?? '')) } : p,
+        )
+      : old.products,
+  }),
+}
 
 /** Застосовує кроки по черзі до версії `target`. null — якщо дійти не можна. */
 export function runMigrations(data: VersionedData, target: number, steps: Record<number, Migration> = MIGRATIONS): VersionedData | null {

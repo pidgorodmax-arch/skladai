@@ -169,7 +169,7 @@ Telegram. Ключі — лише в GitHub Secrets, ніколи у фронт�
 - [x] 1.4 Міграції стану (`migrate.ts`, `persist.ts` з резервною копією; `reducer.ts` окремо)
 - [x] 2.1 DataSource / DemoSource (`src/data/source.ts`; `StoreProvider` приймає `source`)
 - [x] 2.2 Структура таблиці (`docs/sheets.md`: 6 вкладок, колонки, приклади рядків)
-- [ ] 2.2a Артикули (codice, sigla) і час Europe/Rome
+- [x] 2.2a Артикули (codice, sigla) і час Europe/Rome (`types.ts` v2, `time.ts`, міграція v1→v2)
 - [ ] 2.3 Apps Script
 - [ ] 2.4 SheetsSource і налаштування
 - [ ] 2.5 Офлайн-черга
