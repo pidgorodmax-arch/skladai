@@ -2,14 +2,16 @@
 // від сьогоднішньої дати й часто змінюються, тому тести на них не спираються.
 // Усі дати тут — відносно «сьогодні» = TEST_NOW (15 червня 2026).
 
-import type { AppState } from './types'
+import { STATE_VERSION, type AppState } from './types'
 
 /** Полудень за UTC — щоб «сьогодні» було 15.06 у будь-якому часовому поясі Європи. */
 export const TEST_NOW = new Date('2026-06-15T12:00:00Z')
+/** Те саме «сьогодні» у форматі, який приймають селектори (див. startOfDay). */
+export const TEST_TODAY = new Date('2026-06-15T00:00:00Z')
 
 export function makeState(): AppState {
   return {
-    version: 1,
+    version: STATE_VERSION,
     products: [
       { id: 'montasio', name: 'Montasio DOP', unit: 'forme', spacePerUnit: 1, shelfLifeDays: null, pricePerUnit: 95, storage: 'aging' },
       { id: 'mozzarella', name: 'Mozzarella', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 7, pricePerUnit: 9.5, storage: 'cold' },

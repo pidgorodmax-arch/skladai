@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
-import { useStore } from './data/store'
+import { useStore } from './data/useStore'
 import Dashboard from './pages/Dashboard'
 import Orders from './pages/Orders'
 import Register from './pages/Register'

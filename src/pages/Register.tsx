@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { expiryFor, isoDay, lotCode } from '../data/seed'
-import { fmtDate, fmtNum, occupancy, productionPlan } from '../data/selectors'
-import { useStore } from '../data/store'
+import { expiryFor, lotCode } from '../data/seed'
+import { fmtDate, fmtNum, isoDate, occupancy, productionPlan } from '../data/selectors'
+import { useStore } from '../data/useStore'
 import type { AppState } from '../data/types'
 
 /** Пропонує місце: туди, де вже лежить цей продукт і є найбільше вільного місця. */
@@ -15,7 +15,7 @@ function suggestPlace(state: AppState, productId: string): string {
 }
 
 export default function Register() {
-  const { state, dispatch } = useStore()
+  const { state, dispatch, today } = useStore()
   const [productId, setProductId] = useState('mozzarella')
   const [qty, setQty] = useState('48')
   const [milk, setMilk] = useState('490')
@@ -27,11 +27,11 @@ export default function Register() {
   const loc = places.find((p) => p.id === locationId) ?? places[0]
   const qtyNum = Number(qty.replace(',', '.')) || 0
   const milkNum = Number(milk.replace(',', '.')) || 0
-  const producedAt = isoDay(0)
+  const producedAt = isoDate(today)
   const nextLot = lotCode(product.id, producedAt, state.lots.map((l) => l.id))
   const expiry = expiryFor(product, producedAt)
   const yieldPct = product.unit === 'kg' && milkNum > 0 ? (qtyNum / milkNum) * 100 : null
-  const planRow = productionPlan(state).find((r) => r.product.id === product.id)
+  const planRow = productionPlan(state, today).find((r) => r.product.id === product.id)
   const remaining = planRow ? Math.max(0, planRow.todo - qtyNum) : null
   const spaceAfter = loc ? Math.round(((occupancy(state, loc) / 100) * loc.capacity + qtyNum * product.spacePerUnit) / loc.capacity * 100) : 0
 

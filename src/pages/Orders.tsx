@@ -1,5 +1,5 @@
 import { fmtDate, fmtNum, orderCoverage, productMap } from '../data/selectors'
-import { useStore } from '../data/store'
+import { useStore } from '../data/useStore'
 import type { OrderStatus } from '../data/types'
 
 const STATUS_LABEL: Record<OrderStatus, string> = {

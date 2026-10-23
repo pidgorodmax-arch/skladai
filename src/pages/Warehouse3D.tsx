@@ -16,7 +16,7 @@ import {
   productMap,
   usedSpace,
 } from '../data/selectors'
-import { useStore } from '../data/store'
+import { useStore } from '../data/useStore'
 import type { AppState, Location, Lot, Zone } from '../data/types'
 
 type Mode = 'occ' | 'age' | 'exp'
@@ -56,10 +56,10 @@ function fillSlots(state: AppState, loc: Location, slots: number): Lot[] {
   return out
 }
 
-function slotColor(state: AppState, loc: Location, lot: Lot, mode: Mode): string {
+function slotColor(state: AppState, loc: Location, lot: Lot, mode: Mode, today: Date): string {
   if (mode === 'occ') return occColor(occupancy(state, loc))
-  if (mode === 'age') return lot.productId === 'montasio' ? AGE_COLOR[ageClass(daysBetween(lot.producedAt))] : NEUTRAL
-  return lot.expiresAt ? expColor(daysUntil(lot.expiresAt)) : NEUTRAL
+  if (mode === 'age') return lot.productId === 'montasio' ? AGE_COLOR[ageClass(daysBetween(lot.producedAt, today))] : NEUTRAL
+  return lot.expiresAt ? expColor(daysUntil(lot.expiresAt, today)) : NEUTRAL
 }
 
 // ---------- 3D-об'єкти ----------
@@ -67,6 +67,7 @@ function slotColor(state: AppState, loc: Location, lot: Lot, mode: Mode): string
 interface ObjProps {
   loc: Location
   state: AppState
+  today: Date
   mode: Mode
   selected: boolean
   dimmed: boolean
@@ -88,7 +89,7 @@ function useHover() {
   }
 }
 
-function Rack({ loc, state, mode, selected, dimmed, onSelect }: ObjProps) {
+function Rack({ loc, state, today, mode, selected, dimmed, onSelect }: ObjProps) {
   const { hovered, bind } = useHover()
   const levels = 4
   const aging = loc.kind === 'aging'
@@ -110,7 +111,7 @@ function Rack({ loc, state, mode, selected, dimmed, onSelect }: ObjProps) {
     const x = -loc.w / 2 + (loc.w / perRow) * (col + 0.5)
     const z = -loc.d / 2 + (loc.d / rows) * (row + 0.5)
     const y = level * levelH + 0.06
-    const color = slotColor(state, loc, lot, mode)
+    const color = slotColor(state, loc, lot, mode, today)
     return aging ? (
       <mesh key={i} position={[x, y + 0.09, z]} castShadow>
         <cylinderGeometry args={[0.24, 0.24, 0.16, 24]} />
@@ -276,7 +277,7 @@ function CameraRig({ view }: { view: '3d' | 'top' }) {
 // ---------- сторінка ----------
 
 export default function Warehouse3D() {
-  const { state, dispatch } = useStore()
+  const { state, dispatch, today } = useStore()
   const [params, setParams] = useSearchParams()
   const [mode, setMode] = useState<Mode>('occ')
   const [view, setView] = useState<'3d' | 'top'>('3d')
@@ -299,8 +300,8 @@ export default function Warehouse3D() {
 
   const selLots = lotsAt(state, selected.id).sort((a, b) => (a.expiresAt ?? a.producedAt).localeCompare(b.expiresAt ?? b.producedAt))
   const moveTargets = state.locations.filter((l) => l.kind === selected.kind && l.id !== selected.id)
-  const avgAge = selected.kind === 'aging' ? avgAgeDays(state, selected.id) : null
-  const firstExp = selected.kind === 'cold' ? firstExpiryDays(state, selected.id) : null
+  const avgAge = selected.kind === 'aging' ? avgAgeDays(state, selected.id, today) : null
+  const firstExp = selected.kind === 'cold' ? firstExpiryDays(state, selected.id, today) : null
 
   return (
     <main className="page">
@@ -353,6 +354,7 @@ export default function Warehouse3D() {
               const props: ObjProps = {
                 loc,
                 state,
+                today,
                 mode,
                 selected: loc.id === selected.id,
                 dimmed: containing ? !containing.has(loc.id) : false,
@@ -441,7 +443,7 @@ export default function Warehouse3D() {
                         {lot.id} ·{' '}
                         {lot.expiresAt
                           ? `scade ${fmtDate(lot.expiresAt)}`
-                          : `${Math.round(daysBetween(lot.producedAt) / 30)} mesi`}
+                          : `${Math.round(daysBetween(lot.producedAt, today) / 30)} mesi`}
                       </div>
                     </div>
                     {shipping?.lotId === lot.id ? (

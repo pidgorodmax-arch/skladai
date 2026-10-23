@@ -13,27 +13,27 @@ import {
   productionPlan,
   stockValue,
 } from '../data/selectors'
-import { useStore } from '../data/store'
+import { useStore } from '../data/useStore'
 
-function dueChip(iso: string | null, todo: number) {
+function dueChip(iso: string | null, todo: number, today: Date) {
   if (todo <= 0) return <span className="chip ok">Coperto</span>
   if (!iso) return <span className="chip info">—</span>
-  const d = daysUntil(iso)
+  const d = daysUntil(iso, today)
   const cls = d <= 2 ? 'bad' : d <= 4 ? 'warn' : 'info'
   return <span className={`chip ${cls}`}>entro {fmtDate(iso)}</span>
 }
 
 export default function Dashboard() {
-  const { state } = useStore()
+  const { state, today } = useStore()
   const pm = productMap(state)
   const lm = locationMap(state)
-  const plan = productionPlan(state)
-  const expiring = expiringLots(state, 7)
-  const orders = openOrders(state, 14)
-  const aging = agingSummary(state)
+  const plan = productionPlan(state, today)
+  const expiring = expiringLots(state, today, 7)
+  const orders = openOrders(state, today, 14)
+  const aging = agingSummary(state, today)
   const agingTotal = aging.fresco + aging.mezzano + aging.stagionato
-  const brief = morningBrief(state)
-  const todayLabel = new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })
+  const brief = morningBrief(state, today)
+  const todayLabel = today.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
 
   return (
     <main className="page">
@@ -58,7 +58,7 @@ export default function Dashboard() {
           <div className="kpi-label">Lotti in scadenza (7 giorni)</div>
           <div className="kpi-value">{expiring.length}</div>
           <div style={{ fontSize: 13, color: 'var(--warn-fg)', fontWeight: 600 }}>
-            {expiringLots(state, 3).length} entro 3 giorni
+            {expiringLots(state, today, 3).length} entro 3 giorni
           </div>
         </div>
         <div className="card">
@@ -97,7 +97,7 @@ export default function Dashboard() {
                     <td className="num">{fmtNum(r.ordered)} {r.product.unit}</td>
                     <td className="num">{fmtNum(r.stock)} {r.product.unit}</td>
                     <td className="num">{r.todo > 0 ? `${fmtNum(r.todo)} ${r.product.unit}` : '0'}</td>
-                    <td>{dueChip(r.firstDue, r.todo)}</td>
+                    <td>{dueChip(r.firstDue, r.todo, today)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -154,7 +154,7 @@ export default function Dashboard() {
           {expiring.length === 0 && <div className="muted">Nessun lotto in scadenza nei prossimi 7 giorni.</div>}
           <div>
             {expiring.map((l) => {
-              const d = daysUntil(l.expiresAt!)
+              const d = daysUntil(l.expiresAt!, today)
               const cls = d <= 3 ? 'bad' : 'warn'
               return (
                 <div className="list-row" key={l.id}>
