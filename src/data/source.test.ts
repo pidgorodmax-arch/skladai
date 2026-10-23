@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { STORAGE_KEY, type KeyValueStorage } from './persist'
+import { lotQty, lotStock } from './selectors'
 import { createDemoSource } from './source'
 import { TEST_NOW, makeState } from './testState'
 
@@ -50,8 +51,8 @@ describe('createDemoSource', () => {
     await source.apply({ type: 'move', lotId: 'MO-OLD', locationId: 'B' })
 
     const reloaded = await createDemoSource(storage).load()
-    expect(reloaded.lots.find((l) => l.id === 'MZ-1')?.qty).toBe(15)
-    expect(reloaded.lots.find((l) => l.id === 'MO-OLD')?.locationId).toBe('B')
+    expect(lotQty(reloaded, 'MZ-1')).toBe(15)
+    expect(lotStock(reloaded).find((l) => l.id === 'MO-OLD')?.locationId).toBe('B')
     expect(reloaded.log.map((e) => e.text)).toEqual(['Uscita 5 dal lotto L-1206-MZ', 'Lotto L-1506-MO spostato in Scaffale B'])
   })
 

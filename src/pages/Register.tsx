@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { expiryFor, lotCode } from '../data/seed'
-import { fmtDate, fmtNum, isoDate, occupancy, productionPlan } from '../data/selectors'
+import { fmtDate, fmtNum, isoDate, lotStock, occupancy, productionPlan } from '../data/selectors'
 import { useStore } from '../data/useStore'
 import type { AppState } from '../data/types'
 
@@ -9,7 +9,8 @@ import type { AppState } from '../data/types'
 function suggestPlace(state: AppState, productId: string): string {
   const product = state.products.find((p) => p.id === productId)!
   const places = state.locations.filter((l) => l.kind === product.storage)
-  const withProduct = places.filter((l) => state.lots.some((x) => x.locationId === l.id && x.productId === productId))
+  const stock = lotStock(state)
+  const withProduct = places.filter((l) => stock.some((x) => x.locationId === l.id && x.productId === productId))
   const pool = withProduct.length ? withProduct : places
   return [...pool].sort((a, b) => occupancy(state, a) - occupancy(state, b))[0]?.id ?? ''
 }

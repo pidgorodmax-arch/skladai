@@ -2,8 +2,24 @@
 
 import { describe, expect, it } from 'vitest'
 import { fallbackAbbr, isAppState, migrate, runMigrations, type Migration } from './migrate'
+import { lotStock } from './selectors'
 import { makeState } from './testState'
 import { STATE_VERSION } from './types'
+
+/**
+ * Стан у форматі v3 (до 2b.1): кількість і стелаж у самій партії, без коробок.
+ * Саме такий стан і досі віддає Apps Script.
+ */
+function v3State(): Record<string, unknown> {
+  const { boxes: _boxes, picks: _picks, ...state } = makeState()
+  return {
+    ...state,
+    version: 3,
+    lots: lotStock(makeState()).map(({ id, code, productId, qty, locationId, producedAt, expiresAt }) => ({
+      id, code, productId, qty, locationId, producedAt, expiresAt,
+    })),
+  }
+}
 
 describe('migrate', () => {
   it('дані поточної версії проходять без змін', () => {
@@ -37,10 +53,10 @@ describe('v1 → v2: сигла продукту (2.2a)', () => {
   function v1State(): Record<string, unknown> {
     const state = makeState()
     return {
-      ...state,
+      ...v3State(),
       version: 1,
       // у v1 партія мала лише id (він же код для людей)
-      lots: state.lots.map(({ code: _code, ...lot }) => lot),
+      lots: (v3State().lots as Record<string, unknown>[]).map(({ code: _code, ...lot }) => lot),
       products: [
         ...state.products.map(({ id, name, unit, spacePerUnit, shelfLifeDays, pricePerUnit, storage }) => ({
           id, name, unit, spacePerUnit, shelfLifeDays, pricePerUnit, storage,
@@ -64,7 +80,9 @@ describe('v1 → v2: сигла продукту (2.2a)', () => {
   it('партії, замовлення й журнал не губляться (партія отримує code = старий id)', () => {
     const old = v1State()
     const migrated = migrate(old)!
-    expect(migrated.lots).toEqual((old.lots as { id: string }[]).map((l) => ({ ...l, code: l.id })))
+    type OldLot = { id: string; qty: number; locationId: string }
+    expect(migrated.lots).toEqual((old.lots as OldLot[]).map(({ qty: _q, locationId: _l, ...l }) => ({ ...l, code: l.id })))
+    expect(lotStock(migrated).map((l) => [l.id, l.qty, l.locationId])).toEqual((old.lots as OldLot[]).map((l) => [l.id, l.qty, l.locationId]))
     expect(migrated.orders).toEqual(old.orders)
     expect(migrated.log).toEqual(old.log)
   })
@@ -80,15 +98,58 @@ describe('v2 → v3: внутрішній ID партії і код для лю�
   it('старий id стає кодом для людей, сам id не змінюється — посилання не ламаються', () => {
     const state = makeState()
     const v2 = { ...state, version: 2, lots: [{ id: 'L-1506-MZ', productId: 'mozzarella', qty: 5, locationId: 'C', producedAt: '2026-06-15', expiresAt: '2026-06-22' }] }
-    const migrated = migrate(v2)!
+    const migrated = runMigrations(v2, 3)!
     expect(migrated.version).toBe(3)
     expect(migrated.lots).toEqual([{ id: 'L-1506-MZ', code: 'L-1506-MZ', productId: 'mozzarella', qty: 5, locationId: 'C', producedAt: '2026-06-15', expiresAt: '2026-06-22' }])
     expect(migrated.products).toEqual(state.products)
   })
 
   it('партія, що вже має code, не змінюється', () => {
-    const state = makeState()
-    expect(migrate({ ...state, version: 2 })!.lots).toEqual(state.lots)
+    const state = v3State()
+    expect(runMigrations({ ...state, version: 2 }, 3)!.lots).toEqual(state.lots)
+  })
+})
+
+describe('v3 → v4: коробки (2b.1)', () => {
+  it('кожна стара партія стає однією коробкою `<id>-1` з тією ж кількістю на тому ж стелажі', () => {
+    const migrated = migrate(v3State())!
+    expect(migrated.version).toBe(STATE_VERSION)
+    expect(migrated.boxes).toEqual([
+      { id: 'MO-NEW-1', lotId: 'MO-NEW', locationId: 'A', qty: 10 },
+      { id: 'MO-OLD-1', lotId: 'MO-OLD', locationId: 'A', qty: 30 },
+      { id: 'MZ-2-1', lotId: 'MZ-2', locationId: 'C', qty: 15 },
+      { id: 'MZ-1-1', lotId: 'MZ-1', locationId: 'C', qty: 20 },
+      { id: 'YB-1-1', lotId: 'YB-1', locationId: 'C', qty: 100 },
+    ])
+    expect(migrated.picks).toEqual([])
+    // у самій партії кількості й місця більше немає
+    expect(migrated.lots.every((l) => !('qty' in l) && !('locationId' in l))).toBe(true)
+  })
+
+  it('залишок кожної партії після міграції = її колишня кількість (нічого не загубилось)', () => {
+    const old = v3State()
+    const migrated = migrate(old)!
+    expect(lotStock(migrated).map((l) => [l.id, l.locationId, l.qty])).toEqual(
+      (old.lots as { id: string; locationId: string; qty: number }[]).map((l) => [l.id, l.locationId, l.qty]),
+    )
+    expect(migrated).toEqual(makeState())
+  })
+
+  it('партія з нульовою чи зіпсованою кількістю або без стелажа не дає коробки і зникає', () => {
+    const old = v3State()
+    const lots = old.lots as Record<string, unknown>[]
+    lots[0] = { ...lots[0], qty: 0 }
+    lots[1] = { ...lots[1], qty: 'molto' }
+    const { locationId: _l, ...noPlace } = lots[2]
+    lots[2] = noPlace
+    const migrated = migrate(old)!
+    expect(migrated.boxes.map((b) => b.lotId)).toEqual(['MZ-1', 'YB-1'])
+    expect(migrated.lots.map((l) => l.id)).toEqual(['MZ-1', 'YB-1'])
+  })
+
+  it('без списку партій — null, а не падіння', () => {
+    const { lots: _lots, ...broken } = v3State()
+    expect(migrate(broken)).toBeNull()
   })
 })
 

@@ -2,9 +2,9 @@
 // Його викликає StoreProvider через dispatch; ті самі дії згодом
 // застосовуватиме DataSource (Google Sheets) і AI-агент.
 
-import { createSeed, expiryFor, lotCode, withSuffix } from './seed'
+import { createSeed, expiryFor, firstBoxId, lotCode, withSuffix } from './seed'
 import { romeDate, romeDateTime } from './time'
-import type { AppState, Lot, OrderStatus } from './types'
+import type { AppState, Box, Lot, OrderStatus } from './types'
 
 /**
  * Службові поля, які ставить dispatch (див. stamp):
@@ -41,6 +41,31 @@ export function stamp(action: Action, at: Date = new Date(), id: string = newId(
   return stamped.type === 'register' && !stamped.lotId ? { ...stamped, lotId: newId() } : stamped
 }
 
+/**
+ * Бере `qty` з коробок `from` по черзі (у заданому порядку). Повертає нові
+ * коробки стану без порожніх і скільки вдалося взяти (не більше, ніж є).
+ */
+function takeFromBoxes(boxes: Box[], from: Box[], qty: number): { boxes: Box[]; taken: number } {
+  const take = new Map<string, number>()
+  let left = qty
+  for (const b of from) {
+    if (left <= 0) break
+    const t = Math.min(left, b.qty)
+    take.set(b.id, t)
+    left -= t
+  }
+  return {
+    boxes: boxes.map((b) => (take.has(b.id) ? { ...b, qty: b.qty - take.get(b.id)! } : b)).filter((b) => b.qty > 0),
+    taken: qty - left,
+  }
+}
+
+/** Партії, у яких не лишилось жодної коробки, зникають (як раніше партія з qty 0). */
+function dropEmptyLots(lots: Lot[], boxes: Box[]): Lot[] {
+  const withBoxes = new Set(boxes.map((b) => b.lotId))
+  return lots.filter((l) => withBoxes.has(l.id))
+}
+
 /** Формат коду для людей: L-ДДММ-сигла[суфікс]. */
 export const LOT_CODE = /^L-\d{4}-[A-Z0-9]+$/
 
@@ -65,26 +90,29 @@ export function reducer(state: AppState, action: Action): AppState {
         id: action.lotId ?? withSuffix(code, state.lots.map((l) => l.id)),
         code,
         productId: product.id,
-        qty: action.qty,
-        locationId: location.id,
         producedAt,
         expiresAt: expiryFor(product, producedAt),
         milkLitres: action.milkLitres,
       }
+      // Поки що вся нова партія — одна коробка; поділ на кілька — у 2b.2.
+      const box: Box = { id: firstBoxId(lot.id), lotId: lot.id, locationId: location.id, qty: action.qty }
       return {
         ...state,
         lots: [...state.lots, lot],
+        boxes: [...state.boxes, box],
         log: [...state.log, { at: now(), text: `Prodotto lotto ${lot.code}: ${product.name} ${action.qty} ${product.unit} → ${location.name}` }],
       }
     }
     case 'ship': {
       const lot = state.lots.find((l) => l.id === action.lotId)
       if (!lot) return state
-      const qty = Math.min(action.qty, lot.qty)
-      const lots = state.lots
-        .map((l) => (l.id === lot.id ? { ...l, qty: l.qty - qty } : l))
-        .filter((l) => l.qty > 0)
-      return { ...state, lots, log: [...state.log, { at: now(), text: `Uscita ${qty} dal lotto ${lot.code}` }] }
+      const { boxes, taken } = takeFromBoxes(state.boxes, state.boxes.filter((b) => b.lotId === lot.id), action.qty)
+      return {
+        ...state,
+        lots: dropEmptyLots(state.lots, boxes),
+        boxes,
+        log: [...state.log, { at: now(), text: `Uscita ${taken} dal lotto ${lot.code}` }],
+      }
     }
     case 'move': {
       const lot = state.lots.find((l) => l.id === action.lotId)
@@ -92,7 +120,8 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!lot || !to) return state
       return {
         ...state,
-        lots: state.lots.map((l) => (l.id === lot.id ? { ...l, locationId: to.id } : l)),
+        // Уся партія переїжджає разом з усіма коробками; окрема коробка — moveBox (2b.2).
+        boxes: state.boxes.map((b) => (b.lotId === lot.id ? { ...b, locationId: to.id } : b)),
         log: [...state.log, { at: now(), text: `Lotto ${lot.code} spostato in ${to.name}` }],
       }
     }
@@ -102,28 +131,25 @@ export function reducer(state: AppState, action: Action): AppState {
       // «Spedito» остаточний: товар уже списано. Повернення — окрема дія (reso, етап 5).
       if (order.status === 'spedito') return state
       let lots = state.lots
+      let boxes = state.boxes
       const log = [...state.log]
       if (action.status === 'spedito') {
-        // Списуємо зі складу за принципом FEFO: спершу те, що раніше спливає
-        // (для Montasio — найстаріші форми).
+        // Списуємо зі складу за принципом FEFO: спершу коробки партій, що
+        // раніше спливають (для Montasio — найстаріші форми).
+        const fefo = [...state.lots].sort((a, b) => (a.expiresAt ?? a.producedAt).localeCompare(b.expiresAt ?? b.producedAt))
         for (const line of order.lines) {
-          let left = line.qty
-          const candidates = lots
+          const from = fefo
             .filter((l) => l.productId === line.productId)
-            .sort((a, b) => (a.expiresAt ?? a.producedAt).localeCompare(b.expiresAt ?? b.producedAt))
-          for (const c of candidates) {
-            if (left <= 0) break
-            const take = Math.min(left, c.qty)
-            left -= take
-            lots = lots.map((l) => (l.id === c.id ? { ...l, qty: l.qty - take } : l))
-          }
+            .flatMap((l) => boxes.filter((b) => b.lotId === l.id))
+          boxes = takeFromBoxes(boxes, from, line.qty).boxes
         }
-        lots = lots.filter((l) => l.qty > 0)
+        lots = dropEmptyLots(lots, boxes)
         log.push({ at: now(), text: `Spedito ordine ${order.id} a ${order.client}` })
       }
       return {
         ...state,
         lots,
+        boxes,
         log,
         orders: state.orders.map((o) => (o.id === action.orderId ? { ...o, status: action.status } : o)),
       }

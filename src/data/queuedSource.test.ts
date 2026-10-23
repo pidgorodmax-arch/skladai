@@ -7,6 +7,7 @@ import type { KeyValueStorage } from './persist'
 import { CACHE_KEY, QUEUE_KEY, createQueuedSource } from './queuedSource'
 import { reducer, stamp, type Action } from './reducer'
 import { lotCode } from './seed'
+import { lotQty, lotStock } from './selectors'
 import { createSheetsSource, type FetchLike } from './sheetsSource'
 import { TEST_NOW, makeState } from './testState'
 import type { AppState } from './types'
@@ -114,7 +115,7 @@ describe('офлайн-черга', () => {
     net.online = true
     const third = makeSource(fetchFn, storage)
     const fresh = await third.load()
-    expect(fresh.lots.find((l) => l.id === 'YB-1')!.qty).toBe(70)
+    expect(lotQty(fresh, 'YB-1')).toBe(70)
     expect(third.sync.status().pending).toBe(0)
     expect(sheets.Registro.values.at(-1)![1]).toBe('Uscita 30 dal lotto L-0106-YB')
   })
@@ -136,7 +137,7 @@ describe('офлайн-черга', () => {
     net.online = true
     await source.sync.flush()
     expect(source.sync.status()).toMatchObject({ pending: 0, offline: false })
-    expect(seen.at(-1)!.lots[0].qty).toBe(4)
+    expect(lotQty(seen.at(-1)!, 'MO-NEW')).toBe(4)
   })
 
   it('онлайн без черги flush нічого не відправляє й не читає', async () => {
@@ -247,7 +248,7 @@ describe('офлайн-черга', () => {
     await source.apply(action)
     await source.sync.flush()
     const expected = reducer(makeState(), action)
-    expected.lots[0] = { ...expected.lots[0], qty: 9 }
+    expected.boxes[0] = { ...expected.boxes[0], qty: 9 } // рядок 1 у Lotti — MO-NEW, його коробка MO-NEW-1
     expect(seen.at(-1)).toEqual(plain(expected))
   })
 
@@ -317,7 +318,7 @@ describe('два телефони без мережі створили одна�
       'Lotto L-1506-MZ2 spostato in Scaffale A',
     ])
     // Після синхронізації телефон B бачить справжній код своєї партії.
-    expect(seenB.at(-1)!.lots.find((l) => l.id === idB)).toMatchObject({ code: 'L-1506-MZ2', qty: 7, locationId: 'A' })
+    expect(lotStock(seenB.at(-1)!).find((l) => l.id === idB)).toMatchObject({ code: 'L-1506-MZ2', qty: 7, locationId: 'A' })
     expect(b.source.sync.status()).toMatchObject({ pending: 0, error: null })
   })
 

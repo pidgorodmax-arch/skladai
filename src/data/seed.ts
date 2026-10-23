@@ -3,7 +3,7 @@
 // Усе тут вигадане: коди ART-000N, ціни, клієнти (репозиторій публічний).
 
 import { startOfDay } from './selectors'
-import { STATE_VERSION, type AppState, type Lot, type Product } from './types'
+import { STATE_VERSION, type AppState, type Box, type Lot, type Product, type Unit } from './types'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -37,14 +37,41 @@ export function lotCode(abbr: string, producedAt: string, existing: string[]): s
   return withSuffix(`L-${dd}${mm}-${abbr || 'XX'}`, existing)
 }
 
+/**
+ * Код першої коробки партії: `<id партії>-1`. ID партії унікальний (його
+ * дає телефон), тож і код коробки унікальний без мережі. Так само міграція
+ * v3→v4 називає коробку старої партії — тому повторне завантаження з
+ * таблиці дає ті самі коди.
+ */
+export function firstBoxId(lotId: string): string {
+  return `${lotId}-1`
+}
+
 export function expiryFor(product: Product, producedAt: string): string | null {
   if (product.shelfLifeDays == null) return null
   const d = new Date(producedAt + 'T00:00:00Z')
   return isoDay(product.shelfLifeDays, d)
 }
 
+/**
+ * Демо: скільки одиниць у повній коробці. Форми Montasio лежать на стелажі
+ * без коробок — уся партія на стелажі рахується одним «колло».
+ */
+const BOX_SIZE: Record<Unit, number> = { kg: 10, L: 20, vasetti: 48, pz: 24, forme: Infinity }
+
+/** Партія → повні коробки й остання з рештою. */
+function splitIntoBoxes(lotId: string, locationId: string, qty: number, unit: Unit): Box[] {
+  const size = BOX_SIZE[unit]
+  const out: Box[] = []
+  for (let left = qty, n = 1; left > 0; left -= size, n++) {
+    out.push({ id: n === 1 ? firstBoxId(lotId) : `${lotId}-${n}`, lotId, locationId, qty: Math.min(size, left) })
+  }
+  return out
+}
+
 export function createSeed(): AppState {
   const lots: Lot[] = []
+  const boxes: Box[] = []
   const add = (productId: string, qty: number, locationId: string, producedDaysAgo: number) => {
     const product = products.find((p) => p.id === productId)!
     const producedAt = isoDay(-producedDaysAgo)
@@ -53,11 +80,10 @@ export function createSeed(): AppState {
       id: code, // демо: сталий ID; нові партії отримують ID від телефона (stamp)
       code,
       productId,
-      qty,
-      locationId,
       producedAt,
       expiresAt: expiryFor(product, producedAt),
     })
+    boxes.push(...splitIntoBoxes(code, locationId, qty, product.unit))
   }
 
   // Витримка Montasio
@@ -109,6 +135,8 @@ export function createSeed(): AppState {
       { id: 'P1', name: 'Pallet spedizioni', zoneId: 'dock', kind: 'dock', capacity: 400, x: 18, z: 16.5, w: 1.2, d: 1, h: 0.9 },
     ],
     lots,
+    boxes,
+    picks: [],
     orders: [
       { id: 'ORD-1042', client: 'Alimentari Rossi', channel: 'WhatsApp', lines: [{ productId: 'mozzarella', qty: 40 }, { productId: 'ricotta', qty: 15 }], due: isoDay(2), status: 'in_preparazione' },
       { id: 'ORD-1043', client: 'Agriturismo Il Colle', channel: 'Telefono', lines: [{ productId: 'montasio', qty: 6 }], due: isoDay(2), status: 'in_preparazione' },

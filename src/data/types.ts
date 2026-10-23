@@ -55,6 +55,11 @@ export interface Zone {
   d: number
 }
 
+/**
+ * Партія (lotto): що, коли й скільки молока. Кількості й місця в самій
+ * партії немає — вона лежить у коробках (Box), і її залишок = сума коробок
+ * (селектори lotQty, lotStock у selectors.ts).
+ */
 export interface Lot {
   /**
    * Внутрішній унікальний ID: створює телефон у момент запису, без мережі.
@@ -67,11 +72,30 @@ export interface Lot {
    */
   code: string
   productId: string
-  qty: number
-  locationId: string
   producedAt: string // ISO-дата
   expiresAt: string | null
   milkLitres?: number
+}
+
+/**
+ * Коробка (collo): частина однієї партії на конкретному стелажі. Саме її
+ * працівник сканує й бере під замовлення. Порожня коробка зникає зі стану.
+ */
+export interface Box {
+  /** Код етикетки (QR). Перша коробка партії — `<id партії>-1` (див. firstBoxId). */
+  id: string
+  lotId: string
+  locationId: string
+  qty: number
+}
+
+/** Взято з коробки під замовлення (збирання, етап 2b.2). Основа простежуваності. */
+export interface Pick {
+  orderId: string
+  productId: string
+  boxId: string
+  qty: number
+  at: string // «РРРР-ММ-ДДTгг:хх» за Римом
 }
 
 export interface OrderLine {
@@ -94,7 +118,7 @@ export interface Order {
  * Версія формату даних. Збільшуй її, коли змінюєш AppState так, що старі
  * збережені дані вже не підходять, і додай крок у MIGRATIONS (migrate.ts).
  */
-export const STATE_VERSION = 3
+export const STATE_VERSION = 4
 
 export interface AppState {
   version: typeof STATE_VERSION
@@ -102,6 +126,10 @@ export interface AppState {
   zones: Zone[]
   locations: Location[]
   lots: Lot[]
+  /** Коробки — тут живуть кількість і місце кожної партії. */
+  boxes: Box[]
+  /** Що й з якої коробки взяли під замовлення. */
+  picks: Pick[]
   orders: Order[]
   /** Журнал подій — основа для звітів HACCP і для AI-агента. */
   log: { at: string; text: string }[]

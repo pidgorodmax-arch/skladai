@@ -5,7 +5,7 @@
 // порахувати склад на будь-яку дату.
 
 import { romeDate } from './time'
-import type { AppState, Location, Lot, Product } from './types'
+import type { AppState, Box, Location, Lot, Product } from './types'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -57,8 +57,41 @@ export function ageClass(days: number): AgeClass {
   return 'stagionato'
 }
 
-export function lotsAt(state: AppState, locationId: string): Lot[] {
-  return state.lots.filter((l) => l.locationId === locationId)
+/** Коробки однієї партії (за внутрішнім ID). */
+export function boxesOf(state: AppState, lotId: string): Box[] {
+  return state.boxes.filter((b) => b.lotId === lotId)
+}
+
+/** Залишок партії = сума її коробок. */
+export function lotQty(state: AppState, lotId: string): number {
+  return boxesOf(state, lotId).reduce((s, b) => s + b.qty, 0)
+}
+
+/** Партія на одному стелажі з кількістю — те, що показують екрани. */
+export interface LotStock extends Lot {
+  locationId: string
+  /** Сума коробок цієї партії на цьому стелажі. */
+  qty: number
+}
+
+/**
+ * Склад по партіях і стелажах: один рядок на пару (партія, стелаж), кількість
+ * — сума коробок. Порядок — як у state.lots. Партії без коробок не потрапляють.
+ */
+export function lotStock(state: AppState): LotStock[] {
+  const byLot = new Map<string, Map<string, number>>()
+  for (const b of state.boxes) {
+    const places = byLot.get(b.lotId) ?? new Map<string, number>()
+    places.set(b.locationId, (places.get(b.locationId) ?? 0) + b.qty)
+    byLot.set(b.lotId, places)
+  }
+  return state.lots.flatMap((lot) =>
+    [...(byLot.get(lot.id) ?? [])].filter(([, qty]) => qty > 0).map(([locationId, qty]) => ({ ...lot, locationId, qty })),
+  )
+}
+
+export function lotsAt(state: AppState, locationId: string): LotStock[] {
+  return lotStock(state).filter((l) => l.locationId === locationId)
 }
 
 export function usedSpace(state: AppState, locationId: string): number {
@@ -89,7 +122,7 @@ export function firstExpiryDays(state: AppState, locationId: string, today: Date
 
 export function stockByProduct(state: AppState): Record<string, number> {
   const out: Record<string, number> = {}
-  for (const l of state.lots) out[l.productId] = (out[l.productId] ?? 0) + l.qty
+  for (const l of lotStock(state)) out[l.productId] = (out[l.productId] ?? 0) + l.qty
   return out
 }
 
@@ -130,20 +163,20 @@ export function productionPlan(state: AppState, today: Date): PlanRow[] {
     .sort((a, b) => b.todo - a.todo)
 }
 
-export function expiringLots(state: AppState, today: Date, withinDays = 7) {
-  return state.lots
+export function expiringLots(state: AppState, today: Date, withinDays = 7): LotStock[] {
+  return lotStock(state)
     .filter((l) => l.expiresAt && daysUntil(l.expiresAt, today) <= withinDays)
     .sort((a, b) => (a.expiresAt ?? '').localeCompare(b.expiresAt ?? ''))
 }
 
 export function stockValue(state: AppState): number {
   const pm = productMap(state)
-  return state.lots.reduce((s, l) => s + l.qty * (pm[l.productId]?.pricePerUnit ?? 0), 0)
+  return lotStock(state).reduce((s, l) => s + l.qty * (pm[l.productId]?.pricePerUnit ?? 0), 0)
 }
 
 export function agingSummary(state: AppState, today: Date) {
   const out: Record<AgeClass, number> = { fresco: 0, mezzano: 0, stagionato: 0 }
-  for (const l of state.lots) {
+  for (const l of lotStock(state)) {
     if (l.productId !== 'montasio') continue
     out[ageClass(daysBetween(l.producedAt, today))] += l.qty
   }

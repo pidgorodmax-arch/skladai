@@ -6,7 +6,8 @@
 // міграції екран упаде на `undefined`. Міграція по кроках дописує нове поле
 // зі значенням за замовчуванням: v1 → v2 → v3 … до STATE_VERSION.
 
-import { STATE_VERSION, type AppState } from './types'
+import { firstBoxId } from './seed'
+import { STATE_VERSION, type AppState, type Box } from './types'
 
 /** Будь-які збережені дані з номером версії. */
 export type VersionedData = { version: number } & Record<string, unknown>
@@ -50,6 +51,26 @@ export const MIGRATIONS: Record<number, Migration> = {
       ? old.lots.map((l: unknown) => (isRecord(l) && typeof l.code !== 'string' ? { ...l, code: String(l.id ?? '') } : l))
       : old.lots,
   }),
+  // v4 (2b.1): кількість і місце переїхали з партії в коробки. Кожна стара
+  // партія стає однією коробкою `<id>-1` з тією ж кількістю на тому ж
+  // стелажі; у самій партії ці поля прибираємо. Збирань (picks) ще не було.
+  // Цей же крок перетворює дані з Google Таблиці: Apps Script поки віддає v3.
+  // Партія без кількості чи без стелажа коробки не отримує і зникає — як
+  // партія з нулем у reducer (без коробок її однаково ніде не видно).
+  3: (old) => {
+    if (!Array.isArray(old.lots)) return { ...old, version: 4, boxes: [], picks: [] }
+    const boxes: Box[] = []
+    const lots = old.lots.flatMap((l: unknown) => {
+      if (!isRecord(l)) return [l]
+      const { qty, locationId, ...lot } = l
+      const amount = Number(qty)
+      if (!(amount > 0) || typeof locationId !== 'string' || !locationId) return []
+      const lotId = String(lot.id ?? '')
+      boxes.push({ id: firstBoxId(lotId), lotId, locationId, qty: amount })
+      return [lot]
+    })
+    return { ...old, version: 4, lots, boxes, picks: [] }
+  },
 }
 
 /** Застосовує кроки по черзі до версії `target`. null — якщо дійти не можна. */
@@ -71,7 +92,7 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x)
 }
 
-const LISTS = ['products', 'zones', 'locations', 'lots', 'orders', 'log'] as const
+const LISTS = ['products', 'zones', 'locations', 'lots', 'boxes', 'picks', 'orders', 'log'] as const
 
 /** Базова перевірка форми: правильна версія і всі списки на місці. */
 export function isAppState(x: unknown): x is AppState {

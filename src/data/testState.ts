@@ -32,12 +32,21 @@ export function makeState(): AppState {
     // Порядок у масиві навмисно «неправильний» (новіші партії першими),
     // щоб тест FEFO перевіряв сортування, а не порядок запису.
     lots: [
-      { id: 'MO-NEW', code: 'L-1605-MO', productId: 'montasio', qty: 10, locationId: 'A', producedAt: '2026-05-16', expiresAt: null }, // 30 днів
-      { id: 'MO-OLD', code: 'L-1506-MO', productId: 'montasio', qty: 30, locationId: 'A', producedAt: '2025-06-15', expiresAt: null }, // 365 днів
-      { id: 'MZ-2', code: 'L-1406-MZ', productId: 'mozzarella', qty: 15, locationId: 'C', producedAt: '2026-06-14', expiresAt: '2026-06-21' }, // спливає за 6 днів
-      { id: 'MZ-1', code: 'L-1206-MZ', productId: 'mozzarella', qty: 20, locationId: 'C', producedAt: '2026-06-12', expiresAt: '2026-06-19' }, // спливає за 4 дні
-      { id: 'YB-1', code: 'L-0106-YB', productId: 'yogurt', qty: 100, locationId: 'C', producedAt: '2026-06-01', expiresAt: '2026-06-22' }, // спливає за 7 днів
+      { id: 'MO-NEW', code: 'L-1605-MO', productId: 'montasio', producedAt: '2026-05-16', expiresAt: null }, // 30 днів
+      { id: 'MO-OLD', code: 'L-1506-MO', productId: 'montasio', producedAt: '2025-06-15', expiresAt: null }, // 365 днів
+      { id: 'MZ-2', code: 'L-1406-MZ', productId: 'mozzarella', producedAt: '2026-06-14', expiresAt: '2026-06-21' }, // спливає за 6 днів
+      { id: 'MZ-1', code: 'L-1206-MZ', productId: 'mozzarella', producedAt: '2026-06-12', expiresAt: '2026-06-19' }, // спливає за 4 дні
+      { id: 'YB-1', code: 'L-0106-YB', productId: 'yogurt', producedAt: '2026-06-01', expiresAt: '2026-06-22' }, // спливає за 7 днів
     ],
+    // Поки кожна партія — одна коробка `<id>-1` (так її називає й міграція v3→v4).
+    boxes: [
+      { id: 'MO-NEW-1', lotId: 'MO-NEW', locationId: 'A', qty: 10 },
+      { id: 'MO-OLD-1', lotId: 'MO-OLD', locationId: 'A', qty: 30 },
+      { id: 'MZ-2-1', lotId: 'MZ-2', locationId: 'C', qty: 15 },
+      { id: 'MZ-1-1', lotId: 'MZ-1', locationId: 'C', qty: 20 },
+      { id: 'YB-1-1', lotId: 'YB-1', locationId: 'C', qty: 100 },
+    ],
+    picks: [],
     orders: [
       { id: 'O1', client: 'Alimentari Rossi', channel: 'WhatsApp', lines: [{ productId: 'mozzarella', qty: 50 }, { productId: 'montasio', qty: 5 }], due: '2026-06-17', status: 'nuovo' },
       { id: 'O2', client: 'Bar Centrale', channel: 'Telefono', lines: [{ productId: 'mozzarella', qty: 10 }], due: '2026-06-16', status: 'in_preparazione' },

@@ -11,8 +11,10 @@ import {
   firstExpiryDays,
   fmtDate,
   fmtNum,
+  lotStock,
   lotsAt,
   occupancy,
+  type LotStock,
   productMap,
   usedSpace,
 } from '../data/selectors'
@@ -45,10 +47,10 @@ const LEGENDS: Record<Mode, { title: string; items: [string, string][] }> = {
 }
 
 /** Розкладає партії по «слотах» стелажа пропорційно до місця, яке вони займають. */
-function fillSlots(state: AppState, loc: Location, slots: number): Lot[] {
+function fillSlots(state: AppState, loc: Location, slots: number): LotStock[] {
   const pm = productMap(state)
   const lots = [...lotsAt(state, loc.id)].sort((a, b) => a.producedAt.localeCompare(b.producedAt))
-  const out: Lot[] = []
+  const out: LotStock[] = []
   for (const lot of lots) {
     const n = Math.round(((lot.qty * (pm[lot.productId]?.spacePerUnit ?? 1)) / loc.capacity) * slots)
     for (let i = 0; i < n && out.length < slots; i++) out.push(lot)
@@ -295,8 +297,8 @@ export default function Warehouse3D() {
 
   const containing = useMemo(() => {
     if (filter === 'tutti') return null
-    return new Set(state.lots.filter((l) => l.productId === filter).map((l) => l.locationId))
-  }, [state.lots, filter])
+    return new Set(lotStock(state).filter((l) => l.productId === filter).map((l) => l.locationId))
+  }, [state, filter])
 
   const selLots = lotsAt(state, selected.id).sort((a, b) => (a.expiresAt ?? a.producedAt).localeCompare(b.expiresAt ?? b.producedAt))
   const moveTargets = state.locations.filter((l) => l.kind === selected.kind && l.id !== selected.id)

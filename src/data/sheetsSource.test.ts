@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { COLUMNS, TOKEN, loadScript, toSheets, type FakeSheet } from './fakeAppsScript'
 import { reducer } from './reducer'
+import { lotQty } from './selectors'
 import { createSheetsSource, SheetsError, testConnection, type FetchLike, type SheetsErrorCode } from './sheetsSource'
 import { TEST_NOW, makeState } from './testState'
 
@@ -55,7 +56,7 @@ describe('SheetsSource: load', () => {
     const source = createSheetsSource(settings, fetchFn)
     await source.load()
     sheets.Lotti.values[1][COLUMNS.Lotti.findIndex((c) => c[0] === 'quantita')] = 7
-    expect((await source.load()).lots[0].qty).toBe(7)
+    expect(lotQty(await source.load(), 'MO-NEW')).toBe(7)
   })
 
   it('неправильний токен → зрозуміла помилка', async () => {

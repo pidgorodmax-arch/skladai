@@ -7,14 +7,22 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import sheetsMd from '../../docs/sheets.md?raw'
+import { migrate } from './migrate'
 import { reducer, type Action } from './reducer'
+import { lotQty } from './selectors'
 import { TEST_NOW, makeState } from './testState'
 import { COLUMNS, TOKEN, loadScript, toSheets, type Script } from './fakeAppsScript'
 
 const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x))
 
+/**
+ * Відповідь doGet. Скрипт поки віддає стан v3 (кількість і стелаж у партії);
+ * застосунок перетворює його міграцією v3→v4 — тут робимо так само, як
+ * sheetsSource.load(), і порівнюємо вже з v4-станом reducer.
+ */
 function get(script: Script, token = TOKEN) {
-  return JSON.parse(script.doGet({ parameter: { token } }).text)
+  const body = JSON.parse(script.doGet({ parameter: { token } }).text)
+  return body.state ? { ...body, state: migrate(body.state) } : body
 }
 
 function post(script: Script, action: unknown, token = TOKEN) {
@@ -132,7 +140,7 @@ describe('Apps Script: doPost дає той самий результат, що 
     expect(get(script).state).toEqual(plain(reducer(makeState(), action)))
     // інша дія з іншим id — виконується
     post(script, { ...action, id: 'azione-2' })
-    expect(get(script).state.lots.find((l: { id: string }) => l.id === 'YB-1').qty).toBe(80)
+    expect(lotQty(get(script).state, 'YB-1')).toBe(80)
   })
 
   it('повтор register з тим самим ID партії не створює другу (навіть коли пам\'ять CacheService очищена)', () => {
@@ -140,8 +148,9 @@ describe('Apps Script: doPost дає той самий результат, що 
     const action: Action = { type: 'register', productId: 'mozzarella', qty: 4, locationId: 'C', lotId: 'p-1', code: 'L-1506-MZ', id: 'a-1' }
     post(script, action)
     post(script, { ...action, id: 'a-2' }) // інший id дії — CacheService не допоможе, допоможе ID партії
-    const lots = get(script).state.lots.filter((l: { id: string }) => l.id === 'p-1')
-    expect(lots).toEqual([expect.objectContaining({ id: 'p-1', code: 'L-1506-MZ', qty: 4 })])
+    const state = get(script).state
+    expect(state.lots.filter((l: { id: string }) => l.id === 'p-1')).toEqual([expect.objectContaining({ id: 'p-1', code: 'L-1506-MZ' })])
+    expect(lotQty(state, 'p-1')).toBe(4)
     expect(get(script).state).toEqual(plain(reducer(reducer(makeState(), action), { ...action, id: 'a-2' })))
   })
 
