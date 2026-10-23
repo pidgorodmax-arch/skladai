@@ -20,8 +20,13 @@ import { StoreContext } from './useStore'
 
 const demoSource = createDemoSource()
 
-type LoadStatus = { kind: 'loading' } | { kind: 'error' } | { kind: 'ready'; state: AppState }
+type LoadStatus = { kind: 'loading' } | { kind: 'error' } | { kind: 'ready'; state: AppState; source: DataSource }
 
+/**
+ * `source` має бути сталим об'єктом (створеним поза рендером): нове джерело
+ * означає нове завантаження. Якщо джерело змінилося (демо ↔ Sheets у 2.4),
+ * дані попереднього не показуємо, а чекаємо load() нового.
+ */
 export function StoreProvider({ source = demoSource, children }: { source?: DataSource; children: ReactNode }) {
   const [status, setStatus] = useState<LoadStatus>({ kind: 'loading' })
   const [attempt, setAttempt] = useState(0)
@@ -29,7 +34,7 @@ export function StoreProvider({ source = demoSource, children }: { source?: Data
   useEffect(() => {
     let active = true
     source.load().then(
-      (state) => active && setStatus({ kind: 'ready', state }),
+      (state) => active && setStatus({ kind: 'ready', state, source }),
       () => active && setStatus({ kind: 'error' }),
     )
     return () => {
@@ -37,10 +42,12 @@ export function StoreProvider({ source = demoSource, children }: { source?: Data
     }
   }, [source, attempt])
 
-  if (status.kind === 'ready') return <LoadedStore initial={status.state} source={source}>{children}</LoadedStore>
+  if (status.kind === 'ready' && status.source === source) {
+    return <LoadedStore initial={status.state} source={source}>{children}</LoadedStore>
+  }
   return (
-    <main className="page" aria-busy={status.kind === 'loading'}>
-      {status.kind === 'loading' ? (
+    <main className="page" aria-busy={status.kind !== 'error'}>
+      {status.kind !== 'error' ? (
         <p className="muted">Caricamento dei dati…</p>
       ) : (
         <>

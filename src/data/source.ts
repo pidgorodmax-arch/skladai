@@ -24,6 +24,9 @@ export function createDemoSource(storage: KeyValueStorage = browserStorage): Dat
   return {
     async load() {
       saved = loadState(storage)
+      // Одразу записуємо: демо-дані «старіють» від першого відкриття, а
+      // мігровані дані зберігаються вже в новому форматі (як було до 2.1).
+      saveState(storage, saved)
       return saved
     },
     async apply(action) {

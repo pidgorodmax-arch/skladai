@@ -31,6 +31,12 @@ describe('createDemoSource', () => {
     expect(state.lots.length).toBeGreaterThan(0)
   })
 
+  it('після load() стан одразу записаний у сховище (як до 2.1)', async () => {
+    const storage = memoryStorage()
+    const state = await createDemoSource(storage).load()
+    expect(JSON.parse(storage.getItem(STORAGE_KEY)!)).toEqual(state)
+  })
+
   it('читає збережений стан', async () => {
     const storage = memoryStorage({ [STORAGE_KEY]: JSON.stringify(makeState()) })
     expect(await createDemoSource(storage).load()).toEqual(makeState())
