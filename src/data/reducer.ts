@@ -7,9 +7,11 @@ import { romeDate, romeDateTime } from './time'
 import type { AppState, Lot, OrderStatus } from './types'
 
 /**
- * `at` — коли дію зробили («РРРР-ММ-ДДTгг:хх» за Римом). Його ставить
- * dispatch, щоб дія з офлайн-черги, відправлена пізніше, лишилась у журналі
- * й у даті партії тим часом, коли її зробили в цеху.
+ * Службові поля, які ставить dispatch (див. stamp):
+ *   at — коли дію зробили («РРРР-ММ-ДДTгг:хх» за Римом): дія з офлайн-черги,
+ *        відправлена пізніше, лишається в журналі й у даті партії тим часом,
+ *        коли її зробили в цеху;
+ *   id — унікальний номер дії: таблиця не виконає повтор тієї самої дії двічі.
  */
 export type Action = (
   | { type: 'register'; productId: string; qty: number; locationId: string; milkLitres?: number }
@@ -17,11 +19,17 @@ export type Action = (
   | { type: 'move'; lotId: string; locationId: string }
   | { type: 'orderStatus'; orderId: string; status: OrderStatus }
   | { type: 'reset' }
-) & { at?: string }
+) & { at?: string; id?: string }
 
-/** Позначає дію часом «зараз» за Римом (робить dispatch). */
-export function stamp(action: Action, at: Date = new Date()): Action {
-  return { ...action, at: romeDateTime(at) }
+function newId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
+
+/** Позначає дію часом «зараз» за Римом і унікальним id (робить dispatch). */
+export function stamp(action: Action, at: Date = new Date(), id: string = newId()): Action {
+  return { ...action, at: romeDateTime(at), id }
 }
 
 export function reducer(state: AppState, action: Action): AppState {

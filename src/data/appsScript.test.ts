@@ -124,6 +124,17 @@ describe('Apps Script: doPost дає той самий результат, що 
     expect(state).toEqual(plain(reducer(makeState(), action)))
   })
 
+  it('повтор дії з тим самим id не виконується вдруге (відповідь загубилась, телефон надіслав ще раз)', () => {
+    const { script } = setup()
+    const action: Action = { type: 'ship', lotId: 'YB-1', qty: 10, id: 'azione-1' }
+    expect(post(script, action)).toEqual({ ok: true })
+    expect(post(script, action)).toEqual({ ok: true })
+    expect(get(script).state).toEqual(plain(reducer(makeState(), action)))
+    // інша дія з іншим id — виконується
+    post(script, { ...action, id: 'azione-2' })
+    expect(get(script).state.lots.find((l: { id: string }) => l.id === 'YB-1').qty).toBe(80)
+  })
+
   it('некоректний at ігнорується — береться поточний час', () => {
     const { script } = setup()
     post(script, { type: 'move', lotId: 'MZ-1', locationId: 'A', at: 'ieri sera' })

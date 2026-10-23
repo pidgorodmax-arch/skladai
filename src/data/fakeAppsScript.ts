@@ -53,6 +53,11 @@ export function loadScript(sheets: Record<string, FakeSheet>, token: string | nu
         throw new Error('formato non previsto: ' + pattern)
       },
     },
+    // Пам'ять виконаних дій (у Google — CacheService, 6 годин).
+    CacheService: (() => {
+      const done = new Map<string, string>()
+      return { getScriptCache: () => ({ get: (k: string) => done.get(k) ?? null, put: (k: string, v: string) => void done.set(k, v) }) }
+    })(),
     LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k: string) => (k === 'TOKEN' ? token : null) }) },
     ContentService: {

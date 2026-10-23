@@ -97,10 +97,18 @@ function doPost(e) {
     var body = JSON.parse(e && e.postData ? e.postData.contents : '{}')
     checkToken(body.token)
     // Два телефони пишуть одночасно — дії виконуються по черзі.
+    var action = body.action || {}
     var lock = LockService.getScriptLock()
     lock.waitLock(10000)
     try {
-      applyAction(body.action || {})
+      // Повтор тієї самої дії (телефон не отримав відповідь і відправив
+      // ще раз) не виконуємо вдруге: id виконаних дій пам'ятаємо 6 годин.
+      var cache = CacheService.getScriptCache()
+      var doneKey = typeof action.id === 'string' && action.id ? 'done:' + action.id : null
+      if (!doneKey || !cache.get(doneKey)) {
+        applyAction(action)
+        if (doneKey) cache.put(doneKey, '1', 21600)
+      }
     } finally {
       lock.releaseLock()
     }

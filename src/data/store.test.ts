@@ -52,7 +52,9 @@ describe('register — нова партія', () => {
   })
 
   it('stamp ставить час за Римом', () => {
-    expect(stamp({ type: 'reset' }, new Date('2026-06-15T22:30:00Z'))).toEqual({ type: 'reset', at: '2026-06-16T00:30' })
+    expect(stamp({ type: 'reset' }, new Date('2026-06-15T22:30:00Z'), 'a1')).toEqual({ type: 'reset', at: '2026-06-16T00:30', id: 'a1' })
+    const ids = new Set([stamp({ type: 'reset' }).id, stamp({ type: 'reset' }).id])
+    expect(ids.size).toBe(2)
   })
 
   it('взимку журнал теж за Римом (UTC+1)', () => {
