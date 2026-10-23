@@ -19,6 +19,7 @@ export type Action = (
   | { type: 'register'; productId: string; qty: number; locationId: string; milkLitres?: number; lotId?: string; code?: string }
   // lotId у ship/move — завжди внутрішній ID (Lot.id); code — лише для
   // повідомлень людям (наприклад, «Lotto L-2310-MZ non trovato»), не для пошуку.
+  // Передавай code завжди (екрани, AI-агент): інакше в повідомленні буде ID.
   | { type: 'ship'; lotId: string; qty: number; code?: string }
   | { type: 'move'; lotId: string; locationId: string; code?: string }
   | { type: 'orderStatus'; orderId: string; status: OrderStatus }

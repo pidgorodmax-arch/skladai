@@ -163,10 +163,16 @@ function readTable(name) {
     if (!(c[0] in col)) fail('config', 'Scheda «' + name + '»: manca la colonna «' + c[0] + '»')
   })
   var rows = []
+  // Однаковий id у двох рядках — дія могла б потрапити не на той рядок.
+  // (Ordini — виняток: там рядки одного замовлення мають спільний id;
+  // Registro не має id.)
+  var seen = {}
   for (var r = 1; r < values.length; r++) {
-    // Партію, внесену вручну без id, впізнаємо за кодом: id = codice.
-    if (name === 'Lotti' && isEmpty(values[r][col.id]) && !isEmpty(values[r][col.codice])) {
-      values[r][col.id] = values[r][col.codice]
+    if (name === 'Lotti') {
+      // Партія, внесена вручну без id, — ID = codice. Старий рядок (до 2.6,
+      // колонку codice додали пізніше) — codice = id, як міграція v2→v3.
+      if (isEmpty(values[r][col.id]) && !isEmpty(values[r][col.codice])) values[r][col.id] = values[r][col.codice]
+      if (isEmpty(values[r][col.codice]) && !isEmpty(values[r][col.id])) values[r][col.codice] = values[r][col.id]
     }
     // Рядок без першої колонки (id / data_ora) — порожній, пропускаємо.
     if (isEmpty(values[r][col[columns[0][0]]])) continue
@@ -175,6 +181,10 @@ function readTable(name) {
       var value = toField(values[r][col[c[0]]], c[2], name, c[0], r + 1)
       if (value !== undefined) data[c[1]] = value
     })
+    if (typeof data.id === 'string' && name !== 'Ordini') {
+      if (seen[data.id]) fail('config', 'Scheda «' + name + '», riga ' + (r + 1) + ': id «' + data.id + '» ripetuto (già alla riga ' + seen[data.id] + ')')
+      seen[data.id] = r + 1
+    }
     rows.push({ row: r + 1, data: data })
   }
   return { sheet: sheet, header: header, col: col, rows: rows }

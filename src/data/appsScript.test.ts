@@ -168,6 +168,19 @@ describe('Apps Script: doPost дає той самий результат, що 
     })
   })
 
+  it('старий рядок без codice (таблиця до 2.6) читається: code = id', () => {
+    const { sheets, script } = setup()
+    sheets.Lotti.values[1][COLUMNS.Lotti.findIndex((c) => c[0] === 'codice')] = ''
+    const lot = get(script).state.lots[0]
+    expect([lot.id, lot.code]).toEqual(['MO-NEW', 'MO-NEW'])
+  })
+
+  it('однаковий id у двох рядках Lotti — зрозуміла помилка, а не дія на випадковий рядок', () => {
+    const { sheets, script } = setup()
+    sheets.Lotti.values[2][COLUMNS.Lotti.findIndex((c) => c[0] === 'id')] = 'MO-NEW'
+    expect(get(script)).toEqual({ ok: false, error: 'Scheda «Lotti», riga 3: id «MO-NEW» ripetuto (già alla riga 2)', code: 'config' })
+  })
+
   it('партія, внесена вручну без id, отримує ID = codice', () => {
     const { sheets, script } = setup()
     sheets.Lotti.values[1][COLUMNS.Lotti.findIndex((c) => c[0] === 'id')] = ''
