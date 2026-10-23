@@ -11,6 +11,9 @@ import {
   expiringLots,
   firstExpiryDays,
   isoDate,
+  lotQty,
+  lotStock,
+  lotsAt,
   occupancy,
   openOrders,
   orderCoverage,
@@ -62,7 +65,8 @@ describe('заповненість', () => {
 
   it('occupancy не перевищує 100% навіть при переповненні', () => {
     const state = makeState()
-    state.lots.push({ id: 'X', code: 'L-0106-MO', productId: 'montasio', qty: 500, locationId: 'A', producedAt: '2026-06-01', expiresAt: null })
+    state.lots.push({ id: 'X', code: 'L-0106-MO', productId: 'montasio', producedAt: '2026-06-01', expiresAt: null })
+    state.boxes.push({ id: 'X-1', lotId: 'X', locationId: 'A', qty: 500 })
     expect(occupancy(state, loc('A'))).toBe(100)
   })
 
@@ -115,8 +119,48 @@ describe('терміни придатності', () => {
 
   it('expiringLots показує й прострочені партії', () => {
     const state = makeState()
-    state.lots.push({ id: 'OLD', code: 'L-0106-MZ', productId: 'mozzarella', qty: 1, locationId: 'C', producedAt: '2026-06-01', expiresAt: '2026-06-08' })
+    state.lots.push({ id: 'OLD', code: 'L-0106-MZ', productId: 'mozzarella', producedAt: '2026-06-01', expiresAt: '2026-06-08' })
+    state.boxes.push({ id: 'OLD-1', lotId: 'OLD', locationId: 'C', qty: 1 })
     expect(expiringLots(state, T)[0].id).toBe('OLD')
+  })
+})
+
+describe('коробки (2b.1): партія = сума коробок', () => {
+  /** MZ-1 (20 кг): коробка 12 кг на C і ще дві на B (5 і 3). */
+  function split() {
+    const state = makeState()
+    state.boxes = state.boxes.flatMap((b) =>
+      b.lotId === 'MZ-1'
+        ? [{ ...b, qty: 12 }, { id: 'MZ-1-2', lotId: 'MZ-1', locationId: 'B', qty: 5 }, { id: 'MZ-1-3', lotId: 'MZ-1', locationId: 'B', qty: 3 }]
+        : [b],
+    )
+    return state
+  }
+
+  it('lotQty — сума всіх коробок партії; без коробок — 0', () => {
+    expect(lotQty(split(), 'MZ-1')).toBe(20)
+    expect(lotQty(makeState(), 'YB-1')).toBe(100)
+    expect(lotQty(makeState(), 'немає')).toBe(0)
+  })
+
+  it('lotStock — рядок на пару (партія, стелаж), порядок як у партій', () => {
+    const rows = lotStock(split()).filter((l) => l.id === 'MZ-1')
+    expect(rows.map((r) => [r.code, r.locationId, r.qty])).toEqual([['L-1206-MZ', 'C', 12], ['L-1206-MZ', 'B', 8]])
+    expect(lotStock(makeState()).map((l) => l.id)).toEqual(makeState().lots.map((l) => l.id))
+  })
+
+  it('стелаж бачить лише свої коробки; загальний склад продукту не змінюється', () => {
+    expect(lotsAt(split(), 'B').map((l) => [l.id, l.qty])).toEqual([['MZ-1', 8]])
+    expect(stockByProduct(split())).toEqual(stockByProduct(makeState()))
+    expect(stockValue(split())).toBe(stockValue(makeState()))
+  })
+
+  it('партія без коробок і коробка без партії не рахуються в залишку', () => {
+    const state = makeState()
+    state.lots.push({ id: 'EMPTY', code: 'L-0106-MZ', productId: 'mozzarella', producedAt: '2026-06-01', expiresAt: '2026-06-08' })
+    state.boxes.push({ id: 'ORPHAN-1', lotId: 'ORPHAN', locationId: 'C', qty: 99 })
+    expect(stockByProduct(state)).toEqual(stockByProduct(makeState()))
+    expect(expiringLots(state, T).map((l) => l.id)).not.toContain('EMPTY')
   })
 })
 

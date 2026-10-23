@@ -6,7 +6,8 @@
 // міграції екран упаде на `undefined`. Міграція по кроках дописує нове поле
 // зі значенням за замовчуванням: v1 → v2 → v3 … до STATE_VERSION.
 
-import { STATE_VERSION, type AppState } from './types'
+import { firstBoxId } from './seed'
+import { STATE_VERSION, type AppState, type Box } from './types'
 
 /** Будь-які збережені дані з номером версії. */
 export type VersionedData = { version: number } & Record<string, unknown>
@@ -50,6 +51,22 @@ export const MIGRATIONS: Record<number, Migration> = {
       ? old.lots.map((l: unknown) => (isRecord(l) && typeof l.code !== 'string' ? { ...l, code: String(l.id ?? '') } : l))
       : old.lots,
   }),
+  // v4 (2b.1): кількість і місце переїхали з партії в коробки. Кожна стара
+  // партія стає однією коробкою `<id>-1` з тією ж кількістю на тому ж
+  // стелажі; у самій партії ці поля прибираємо. Збирань (picks) ще не було.
+  // Цей же крок перетворює дані з Google Таблиці: Apps Script поки віддає v3.
+  3: (old) => {
+    const lots = Array.isArray(old.lots) ? old.lots : []
+    const boxes: Box[] = []
+    const cleaned = lots.map((l: unknown) => {
+      if (!isRecord(l)) return l
+      const { qty, locationId, ...lot } = l
+      const amount = Number(qty)
+      if (amount > 0) boxes.push({ id: firstBoxId(String(lot.id ?? '')), lotId: String(lot.id ?? ''), locationId: String(locationId ?? ''), qty: amount })
+      return lot
+    })
+    return { ...old, version: 4, lots: Array.isArray(old.lots) ? cleaned : old.lots, boxes, picks: [] }
+  },
 }
 
 /** Застосовує кроки по черзі до версії `target`. null — якщо дійти не можна. */
@@ -71,7 +88,7 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x)
 }
 
-const LISTS = ['products', 'zones', 'locations', 'lots', 'orders', 'log'] as const
+const LISTS = ['products', 'zones', 'locations', 'lots', 'boxes', 'picks', 'orders', 'log'] as const
 
 /** Базова перевірка форми: правильна версія і всі списки на місці. */
 export function isAppState(x: unknown): x is AppState {

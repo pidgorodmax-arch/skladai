@@ -3,6 +3,7 @@
 // Використовують appsScript.test.ts і sheetsSource.test.ts.
 
 import codeGs from '../../apps-script/Code.gs?raw'
+import { lotStock } from './selectors'
 import { romeDate, romeDateTime } from './time'
 import type { AppState } from './types'
 
@@ -69,7 +70,11 @@ export function loadScript(sheets: Record<string, FakeSheet>, token: string | nu
   return factory(...Object.values(services)) as Script
 }
 
-/** Стан застосунку → вкладки таблиці, як описано в docs/sheets.md. */
+/**
+ * Стан застосунку → вкладки таблиці, як описано в docs/sheets.md.
+ * Вкладка Lotti поки у форматі v3: кількість і стелаж у рядку партії
+ * (сума її коробок). Окрема вкладка Colli — завдання 2b.1a.
+ */
 export function toSheets(state: AppState, columns: Columns): Record<string, FakeSheet> {
   const cell = (v: unknown): Cell => (v === undefined || v === null ? '' : (v as Cell))
   const table = (name: string, records: Record<string, unknown>[]) =>
@@ -80,7 +85,7 @@ export function toSheets(state: AppState, columns: Columns): Record<string, Fake
     Prodotti: table('Prodotti', rec(state.products)),
     Zone: table('Zone', rec(state.zones)),
     Posizioni: table('Posizioni', rec(state.locations)),
-    Lotti: table('Lotti', rec(state.lots)),
+    Lotti: table('Lotti', rec(lotStock(state))),
     Ordini: table('Ordini', rec(orderRows)),
     Registro: table('Registro', rec(state.log)),
   }
