@@ -75,6 +75,8 @@ export default function QrCamera({ onCode }: { onCode: (text: string) => void })
       if (stopped || !video) return stream.getTracks().forEach((t) => t.stop())
       video.srcObject = stream
       await video.play().catch(() => undefined)
+      // Поки запускалось відео, камеру могли вимкнути — тоді таймер не потрібен.
+      if (stopped) return
       setStatus('on')
       const detector = nativeDetector()
       timer = setInterval(async () => {

@@ -47,9 +47,12 @@ export default function Scan() {
     [setParams],
   )
 
+  const movingFrom = state.boxes.find((b) => b.id === moving)?.locationId
+
   const moveTo = (locationId: string) => {
     const to = state.locations.find((l) => l.id === locationId)
     if (!moving || !to) return
+    if (to.id === movingFrom) return setMessage(`Il collo è già in ${to.name}`)
     dispatch({ type: 'moveBox', boxId: moving, locationId: to.id })
     setMessage(`Collo spostato in ${to.name}`)
     setMoving(null)
@@ -60,6 +63,8 @@ export default function Scan() {
     setQuery('')
     // Чекаємо стелаж для переміщення — скан стелажа завершує переміщення.
     if (moving && t.kind === 'posizione') return moveTo(t.id)
+    // Відкрили іншу коробку — незавершене переміщення попередньої скасовуємо.
+    if (moving && t.id !== moving) setMoving(null)
     setMessage(null)
     show(t)
   }
@@ -91,7 +96,7 @@ export default function Scan() {
             <label htmlFor="scan-move">Scaffale</label>
             <select id="scan-move" value="" onChange={(e) => e.target.value && moveTo(e.target.value)}>
               <option value="">Scegli…</option>
-              {places.map((p) => (
+              {places.filter((p) => p.id !== movingFrom).map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
