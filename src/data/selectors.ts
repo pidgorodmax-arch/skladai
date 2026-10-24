@@ -221,6 +221,41 @@ export function boxLabels(state: AppState): BoxLabel[] {
   })
 }
 
+/** Що знайшли за сканом (2b.4): коробку з її етикеткою або стелаж з коробками на ньому. */
+export type ScanResult =
+  | { kind: 'collo'; label: BoxLabel }
+  | { kind: 'posizione'; location: Location; boxes: BoxLabel[] }
+
+/** Відсканований код → коробка чи стелаж зі стану; невідомий код — null. */
+export function resolveScan(state: AppState, target: { kind: 'collo' | 'posizione'; id: string }): ScanResult | null {
+  if (target.kind === 'collo') {
+    const label = boxLabels(state).find((l) => l.box.id === target.id)
+    return label ? { kind: 'collo', label } : null
+  }
+  const location = state.locations.find((l) => l.id === target.id)
+  return location ? { kind: 'posizione', location, boxes: boxLabels(state).filter((l) => l.box.locationId === location.id) } : null
+}
+
+/** Для пошуку: великі літери, без пробілів, крапок і дефісів («l 2310 mz» = «L-2310-MZ»). */
+function searchKey(text: string): string {
+  return text.toUpperCase().replace(/[\s.\-·/]/g, '')
+}
+
+/**
+ * Ручний резерв сканера: частина коду лоту з етикетки («2310MZ») або назва чи
+ * id стелажа. Коробки — за лотом, стелажі — за назвою/id. Коротше 2 символів — нічого.
+ */
+export function manualSearch(state: AppState, query: string, limit = 20): { boxes: BoxLabel[]; places: Location[] } {
+  const q = searchKey(query)
+  if (q.length < 2) return { boxes: [], places: [] }
+  return {
+    boxes: boxLabels(state).filter((l) => searchKey(l.lot.code).includes(q)).slice(0, limit),
+    places: state.locations
+      .filter((l) => l.kind !== 'machine' && (searchKey(l.name).includes(q) || searchKey(l.id) === q))
+      .slice(0, limit),
+  }
+}
+
 /** Скільки зібрано під рядок замовлення (сканером і автоматично). */
 export function pickedQty(state: AppState, orderId: string, productId: string): number {
   return state.picks.filter((p) => p.orderId === orderId && p.productId === productId).reduce((s, p) => s + p.qty, 0)
