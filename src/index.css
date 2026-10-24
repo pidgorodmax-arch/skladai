@@ -141,6 +141,14 @@ footer.app-foot .foot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 footer.app-foot { max-width: 1360px; margin: 0 auto; padding: 8px 24px 32px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; color: var(--muted); font-size: 13px; }
 
+/* ---------- сканер (2b.4) ---------- */
+.scan-camera { position: relative; width: 100%; aspect-ratio: 1; background: #111; border-radius: 12px; overflow: hidden; }
+.scan-camera video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-frame { position: absolute; inset: 18%; border: 3px solid var(--mint); border-radius: 12px; pointer-events: none; }
+.scan-camera-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center; color: #fff; }
+.scan-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 56px; padding: 8px 12px; text-align: left; border: 1px solid var(--field); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; cursor: pointer; }
+.scan-item:focus-visible { outline: 3px solid #1d4f8a; outline-offset: 2px; }
+
 /* ---------- етикетки (2b.3) ---------- */
 .label-picks { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; border-top: 1px solid var(--line-2); }
 .label-pick { display: flex; gap: 12px; align-items: center; min-height: 44px; padding: 4px 0; border-bottom: 1px solid var(--line-2); cursor: pointer; }

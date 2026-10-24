@@ -60,6 +60,21 @@ afterEach(() => {
 })
 
 describe('офлайн-черга', () => {
+  it('скан без мережі: переміщення коробки чекає в черзі й доходить до таблиці (2b.4)', async () => {
+    const { sheets, net, fetchFn } = fakeGoogle()
+    const source = makeSource(fetchFn, memoryStorage())
+    await source.load()
+    net.online = false
+    await source.apply(stamp({ type: 'moveBox', boxId: 'MZ-1-1', locationId: 'A' }))
+    expect(source.sync.status().pending).toBe(1)
+    const posizione = () => sheets.Colli.values.find((r) => r[0] === 'MZ-1-1')![COLUMNS.Colli.findIndex((c) => c[0] === 'posizione')]
+    expect(posizione()).toBe('C')
+    net.online = true
+    await source.sync.flush()
+    expect(source.sync.status().pending).toBe(0)
+    expect(posizione()).toBe('A')
+  })
+
   it('без мережі партія записується в чергу на телефоні; з мережею — потрапляє в таблицю', async () => {
     const { sheets, net, fetchFn } = fakeGoogle()
     const storage = memoryStorage()
