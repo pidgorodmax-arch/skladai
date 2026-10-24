@@ -11,6 +11,8 @@ import Settings from './pages/Settings'
 const Warehouse3D = lazy(() => import('./pages/Warehouse3D'))
 // Етикетки тягнуть бібліотеку QR — теж лише коли їх відкривають.
 const Labels = lazy(() => import('./pages/Labels'))
+// Сканер тягне розпізнавач QR (jsQR) — так само окремо.
+const Scan = lazy(() => import('./pages/Scan'))
 
 function Logo() {
   return (
@@ -40,6 +42,7 @@ export default function App() {
             <NavLink to="/magazzino" className={link}>Magazzino 3D</NavLink>
             <NavLink to="/ordini" className={link}>Ordini</NavLink>
             <NavLink to="/registra" className={link}>Registra</NavLink>
+            <NavLink to="/scan" className={link}>Scansiona</NavLink>
             <NavLink to="/etichette" className={link}>Etichette</NavLink>
           </nav>
         </div>
@@ -51,6 +54,7 @@ export default function App() {
           <Route path="/magazzino" element={<Warehouse3D />} />
           <Route path="/ordini" element={<Orders />} />
           <Route path="/registra" element={<Register />} />
+          <Route path="/scan" element={<Scan />} />
           <Route path="/etichette" element={<Labels />} />
           <Route path="/impostazioni" element={<Settings />} />
           <Route path="*" element={<Dashboard />} />
