@@ -138,6 +138,7 @@ curl -sL "$URL?token=sbagliato"
 | `placeBox` | `fromBoxId`, `qty`, `locationId`, `boxId?` | Нова коробка: відділяє `qty` від коробки `fromBoxId` (не більше, ніж у ній) і ставить на `locationId`. `boxId` — код етикетки (дає телефон; без нього — `<партія>-2`, `-3`…). Повтор з тим самим `boxId` нічого не робить |
 | `moveBox` | `boxId`, `locationId` | Міняє `posizione` однієї коробки |
 | `pick` | `orderId`, `boxId`, `qty` | Збирання: зменшує коробку (не більше, ніж у ній; продукт має бути в замовленні; більше, ніж замовлено, — можна, бо вага упаковок «плаває»), дописує рядок у `Prelievi` з `modo` = `scansionato`; `nuovo` → `in_preparazione` |
+| `uscita` | `dest` (`ordine` / `spaccio` / `scarto`), `qty`, `boxId?` або `productId?` | Uscita rapida: з коробки `boxId` (не більше, ніж у ній) або за продуктом — за FEFO з кількох коробок (не більше, ніж є). Дописує рядки в `Uscite` (створює вкладку, якщо її немає) і в `Registro`. Замовлень не створює |
 | `orderStatus` | `orderId`, `status` (`nuovo` / `in_preparazione` / `spedito`) | Міняє `stato` в усіх рядках замовлення; `spedito` добирає незібране з коробок за FEFO (рядки `Prelievi` з `modo` = `automatico`) і остаточний |
 
 Кожна дія, крім зміни статусу без відвантаження, дописує рядок у

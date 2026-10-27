@@ -3,8 +3,9 @@
 // застосовуватиме DataSource (Google Sheets) і AI-агент.
 
 import { createSeed, expiryFor, firstBoxId, lotCode, nextBoxId, withSuffix } from './seed'
+import { DEST_LABEL, fefoBoxesOf } from './selectors'
 import { romeDate, romeDateTime } from './time'
-import type { AppState, Box, Lot, OrderStatus, Pick } from './types'
+import type { AppState, Box, Destinazione, Lot, OrderStatus, Pick, Uscita } from './types'
 
 /**
  * Службові поля, які ставить dispatch (див. stamp):
@@ -31,6 +32,10 @@ export type Action = (
   | { type: 'moveBox'; boxId: string; locationId: string }
   // Збирання: працівник відсканував коробку й узяв qty під замовлення.
   | { type: 'pick'; orderId: string; boxId: string; qty: number }
+  // Uscita rapida (2c.1): товар виходить у dest без замовлення в SkladAI.
+  // boxId — з відсканованої коробки (не більше, ніж у ній); без boxId —
+  // за продуктом productId, система бере за FEFO з кількох коробок.
+  | { type: 'uscita'; dest: Destinazione; qty: number; boxId?: string; productId?: string }
   | { type: 'orderStatus'; orderId: string; status: OrderStatus }
   | { type: 'reset' }
 ) & { at?: string; id?: string }
@@ -208,6 +213,35 @@ export function reducer(state: AppState, action: Action): AppState {
         log: [...state.log, { at: now(), text: `Prelievo ${action.qty} ${product.unit} ${product.name} dal lotto ${lot.code} per ordine ${order.id}` }],
       }
     }
+    case 'uscita': {
+      if (!(action.dest in DEST_LABEL) || !(action.qty > 0)) return state
+      const box = action.boxId ? state.boxes.find((b) => b.id === action.boxId) : undefined
+      if (action.boxId && !box) return state
+      const productId = box ? state.lots.find((l) => l.id === box.lotId)?.productId : action.productId
+      const product = state.products.find((p) => p.id === productId)
+      if (!product) return state
+      const from = box ? [box] : fefoBoxesOf(state, product.id)
+      // Не можна взяти більше, ніж є (у коробці або в усіх коробках продукту).
+      if (action.qty > from.reduce((s, b) => s + b.qty, 0)) return state
+      const taken = takeFromBoxes(state.boxes, from, action.qty)
+      const lots = new Map(state.lots.map((l) => [l.id, l]))
+      const uscite: Uscita[] = taken.parts.map((p) => ({
+        boxId: p.box.id, lotId: p.box.lotId, productId: product.id, qty: p.qty, dest: action.dest, at: now(),
+      }))
+      return {
+        ...state,
+        lots: dropEmptyLots(state.lots, taken.boxes),
+        boxes: taken.boxes,
+        uscite: [...state.uscite, ...uscite],
+        log: [
+          ...state.log,
+          ...uscite.map((u) => ({
+            at: u.at,
+            text: `Uscita ${u.qty} ${product.unit} ${product.name} dal lotto ${lots.get(u.lotId)?.code ?? u.lotId} → ${DEST_LABEL[u.dest]}`,
+          })),
+        ],
+      }
+    }
     case 'orderStatus': {
       const order = state.orders.find((o) => o.id === action.orderId)
       if (!order || order.status === action.status) return state
@@ -221,13 +255,10 @@ export function reducer(state: AppState, action: Action): AppState {
         // Те, що вже зібрано сканером, уже списано з коробок. Решту рядка
         // система добирає сама за FEFO — спершу коробки партій, що раніше
         // спливають (для Montasio — найстаріші форми), — і позначає «automatico».
-        const fefo = [...state.lots].sort((a, b) => (a.expiresAt ?? a.producedAt).localeCompare(b.expiresAt ?? b.producedAt))
         for (const line of order.lines) {
           const left = line.qty - picked(state.picks, order.id, line.productId)
           if (left <= 0) continue
-          const from = fefo
-            .filter((l) => l.productId === line.productId)
-            .flatMap((l) => boxes.filter((b) => b.lotId === l.id))
+          const from = fefoBoxesOf({ ...state, boxes }, line.productId)
           const taken = takeFromBoxes(boxes, from, left)
           boxes = taken.boxes
           for (const part of taken.parts) {

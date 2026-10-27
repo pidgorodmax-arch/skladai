@@ -22,6 +22,8 @@ export interface Product {
   yieldPerLitre?: number
   /** Тип місця, де продукт зберігається. */
   storage: 'aging' | 'cold'
+  /** Scorta minima: нижче цього залишку — попередження (колонка `scorta_minima`). */
+  minStock?: number
 }
 
 export type LocationKind = 'aging' | 'cold' | 'machine' | 'dock'
@@ -96,6 +98,22 @@ export interface Box {
  */
 export type PickMethod = 'scansionato' | 'automatico'
 
+/** Куди пішов товар з «Uscita rapida» (2c.1): під замовлення з Mexal, у spaccio чи в брак. */
+export type Destinazione = 'ordine' | 'spaccio' | 'scarto'
+
+/**
+ * Вихід товару з коробки (2c.1) — без замовлень і клієнтів у SkladAI
+ * (замовлення ведуть у Mexal). Лот зберігаємо для простежуваності HACCP.
+ */
+export interface Uscita {
+  boxId: string
+  lotId: string
+  productId: string
+  qty: number
+  dest: Destinazione
+  at: string // «РРРР-ММ-ДДTгг:хх» за Римом
+}
+
 /** Взято з коробки під замовлення (збирання, етап 2b.2). Основа простежуваності. */
 export interface Pick {
   orderId: string
@@ -128,7 +146,7 @@ export interface Order {
  * Версія формату даних. Збільшуй її, коли змінюєш AppState так, що старі
  * збережені дані вже не підходять, і додай крок у MIGRATIONS (migrate.ts).
  */
-export const STATE_VERSION = 5
+export const STATE_VERSION = 6
 
 export interface AppState {
   version: typeof STATE_VERSION
@@ -140,6 +158,8 @@ export interface AppState {
   boxes: Box[]
   /** Що й з якої коробки взяли під замовлення. */
   picks: Pick[]
+  /** Виходи товару з «Uscita rapida»: Ordine / Spaccio / Scarto. */
+  uscite: Uscita[]
   orders: Order[]
   /** Журнал подій — основа для звітів HACCP і для AI-агента. */
   log: { at: string; text: string }[]

@@ -87,6 +87,9 @@ export const MIGRATIONS: Record<number, Migration> = {
         : old.picks,
     }
   },
+  // v6 (2c.1): список виходів товару «Uscita rapida» — спершу порожній.
+  // Нове поле продукту minStock необов'язкове, його міграція не дописує.
+  5: (old) => ({ ...old, version: 6, uscite: [] }),
 }
 
 /** Застосовує кроки по черзі до версії `target`. null — якщо дійти не можна. */
@@ -108,7 +111,7 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x)
 }
 
-const LISTS = ['products', 'zones', 'locations', 'lots', 'boxes', 'picks', 'orders', 'log'] as const
+const LISTS = ['products', 'zones', 'locations', 'lots', 'boxes', 'picks', 'uscite', 'orders', 'log'] as const
 
 /** Базова перевірка форми: правильна версія і всі списки на місці. */
 export function isAppState(x: unknown): x is AppState {

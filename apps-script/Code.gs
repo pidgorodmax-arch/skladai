@@ -1,9 +1,9 @@
-// SkladAI — Apps Script для Google Таблиці клієнта (завдання 2.3; коробки — 2b.1a; збирання — 2b.2).
+// SkladAI — Apps Script для Google Таблиці клієнта (завдання 2.3; коробки — 2b.1a; збирання — 2b.2; uscita rapida — 2c).
 //
 // Що робить:
 //   doGet  — читає всі вкладки й повертає дані у форматі застосунку (AppState).
 //   doPost — застосовує одну дію (register, move, ship, placeBox, moveBox,
-//            pick, orderStatus) так само,
+//            pick, uscita, orderStatus) так само,
 //            як reducer застосунку (src/data/reducer.ts), і пише в Registro.
 // Структура таблиці — docs/sheets.md. Розгортання — apps-script/README.md.
 //
@@ -15,7 +15,7 @@
 // Безпека: доступ лише з токеном. Токен зберігається у властивостях скрипта
 // (Impostazioni progetto → Proprietà script → TOKEN), не в коді й не в таблиці.
 
-var STATE_VERSION = 5
+var STATE_VERSION = 6
 var TIME_ZONE = 'Europe/Rome'
 
 // Колонки кожної вкладки: [назва в таблиці, поле в застосунку, тип].
@@ -33,6 +33,7 @@ var COLUMNS = {
     ['prezzo', 'pricePerUnit', 'num'],
     ['resa_per_litro', 'yieldPerLitre', 'num?'],
     ['conservazione', 'storage', 'text'],
+    ['scorta_minima', 'minStock', 'num?'],
   ],
   Zone: [
     ['id', 'id', 'text'],
@@ -84,6 +85,16 @@ var COLUMNS = {
     ['quantita', 'qty', 'num'],
     ['data_ora', 'at', 'datetime'],
     ['modo', 'method', 'text'],
+  ],
+  // Uscita rapida (2c): товар вийшов з коробки без замовлення в SkladAI. Лише дописується.
+  // destinazione: ordine (замовлення з Mexal), spaccio, scarto.
+  Uscite: [
+    ['collo', 'boxId', 'text'],
+    ['lotto', 'lotId', 'text'],
+    ['prodotto', 'productId', 'text'],
+    ['quantita', 'qty', 'num'],
+    ['destinazione', 'dest', 'text'],
+    ['data_ora', 'at', 'datetime'],
   ],
   // Один рядок = одна позиція замовлення; рядки з однаковим id — одне замовлення.
   Ordini: [
@@ -249,11 +260,13 @@ function toField(v, type, sheetName, colName, rowNumber) {
 function loadTables() {
   var t = {}
   var hasColli = !!SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Colli')
-  // Вкладки Prelievi може ще не бути: тоді збирань немає, її створить перший запис (ensurePrelievi).
-  if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Prelievi')) t.Prelievi = { rows: [], missing: true }
+  // Вкладок Prelievi й Uscite може ще не бути: тоді записів немає, вкладку створить перший запис (ensureTab).
+  OPTIONAL_TABS.forEach(function (name) {
+    if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name)) t[name] = { rows: [], missing: true }
+  })
   Object.keys(COLUMNS).forEach(function (name) {
     if (name === 'Colli' && !hasColli) return
-    if (name === 'Prelievi' && t.Prelievi) return
+    if (t[name] && t[name].missing) return
     t[name] = readTable(name, name === 'Lotti' && !hasColli ? LEGACY_LOTTI : undefined)
   })
   if (!hasColli) {
@@ -313,6 +326,7 @@ function loadState() {
     lots: datas(t.Lotti),
     boxes: datas(t.Colli),
     picks: datas(t.Prelievi),
+    uscite: datas(t.Uscite),
     orders: groupOrders(t.Ordini.rows),
     log: datas(t.Registro),
   }
@@ -417,17 +431,20 @@ function takeFromBoxes(from, qty, changed, parts) {
   return qty - left
 }
 
-/** Вкладки Prelievi ще немає — створюємо її з заголовком (перше збирання). */
-function ensurePrelievi(t) {
-  if (!t.Prelievi.missing) return
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('Prelievi')
-  var header = COLUMNS.Prelievi.map(function (c) { return c[0] })
+/** Вкладки, яких може не бути: їх створює перший запис. */
+var OPTIONAL_TABS = ['Prelievi', 'Uscite']
+
+/** Необов'язкової вкладки ще немає — створюємо її з заголовком (перший запис). */
+function ensureTab(t, name) {
+  if (!t[name].missing) return
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(name)
+  var header = COLUMNS[name].map(function (c) { return c[0] })
   sheet.getRange(1, 1, 1, header.length).setValues([header])
-  t.Prelievi = readTable('Prelievi')
+  t[name] = readTable(name)
 }
 
 function writePick(t, p) {
-  ensurePrelievi(t)
+  ensureTab(t, 'Prelievi')
   appendRow(t.Prelievi, {
     ordine: p.orderId, prodotto: p.productId, collo: p.boxId, lotto: p.lotId,
     quantita: p.qty, data_ora: p.at, modo: p.method,
@@ -502,6 +519,7 @@ function applyAction(action) {
     case 'placeBox': return placeBox(t, action, now)
     case 'moveBox': return moveBox(t, action, now)
     case 'pick': return pick(t, action, now)
+    case 'uscita': return uscita(t, action, now)
     case 'orderStatus': return orderStatus(t, action, now)
     default: fail('rejected', 'Azione sconosciuta: ' + action.type)
   }
@@ -615,6 +633,53 @@ function pick(t, a, now) {
   // Почали збирати — замовлення вже «in preparazione».
   if (order.status === 'nuovo') orderRows.forEach(function (r) { setCell(t.Ordini, r.row, 'stato', 'in_preparazione') })
   writeLog(t, now, 'Prelievo ' + qty + ' ' + product.data.unit + ' ' + product.data.name + ' dal lotto ' + lot.data.code + ' per ordine ' + order.id)
+}
+
+var DEST_LABEL = { ordine: 'Ordine', spaccio: 'Spaccio', scarto: 'Scarto' }
+
+/** Як fefoBoxesOf у selectors.ts: коробки продукту, спершу партії, що раніше спливають. */
+function fefoBoxes(t, productId) {
+  var from = []
+  t.Lotti.rows
+    .filter(function (l) { return l.data.productId === productId })
+    .sort(function (x, y) {
+      var a1 = x.data.expiresAt || x.data.producedAt
+      var b1 = y.data.expiresAt || y.data.producedAt
+      return a1 < b1 ? -1 : a1 > b1 ? 1 : 0
+    })
+    .forEach(function (l) { from = from.concat(boxesOf(t, l.data.id)) })
+  return from
+}
+
+/** Uscita rapida: з коробки boxId або за продуктом productId (FEFO), у dest. */
+function uscita(t, a, now) {
+  if (!DEST_LABEL.hasOwnProperty(a.dest)) fail('rejected', 'Destinazione non valida: ' + a.dest)
+  var qty = positive(a.qty, 'Quantità non valida')
+  var box = null
+  if (a.boxId) {
+    box = findRow(t.Colli, a.boxId)
+    if (!box) fail('rejected', 'Collo sconosciuto: ' + a.boxId)
+  }
+  var lotOfBox = box && findRow(t.Lotti, box.data.lotId)
+  var product = findRow(t.Prodotti, box ? (lotOfBox && lotOfBox.data.productId) : a.productId)
+  if (!product) fail('rejected', 'Prodotto sconosciuto: ' + (a.productId || a.boxId))
+  var from = box ? [box] : fefoBoxes(t, product.data.id)
+  var available = from.reduce(function (s, b) { return s + b.data.qty }, 0)
+  // Не можна взяти більше, ніж є (у коробці або в усіх коробках продукту).
+  if (qty > available) fail('rejected', 'Disponibili solo ' + available + ' ' + product.data.unit)
+  var codes = {}
+  t.Lotti.rows.forEach(function (l) { codes[l.data.id] = l.data.code })
+  var changed = []
+  var parts = []
+  takeFromBoxes(from, qty, changed, parts)
+  saveBoxes(t, changed)
+  ensureTab(t, 'Uscite')
+  parts.forEach(function (p) {
+    appendRow(t.Uscite, {
+      collo: p.box.id, lotto: p.box.lotId, prodotto: product.data.id, quantita: p.qty, destinazione: a.dest, data_ora: now,
+    })
+    writeLog(t, now, 'Uscita ' + p.qty + ' ' + product.data.unit + ' ' + product.data.name + ' dal lotto ' + (codes[p.box.lotId] || p.box.lotId) + ' → ' + DEST_LABEL[a.dest])
+  })
 }
 
 /** Скільки вже зібрано під рядок замовлення (усі способи). */
