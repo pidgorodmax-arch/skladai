@@ -12,6 +12,9 @@ import QrCamera from './QrCamera'
 
 const num = (n: number) => fmtNum(n, Number.isInteger(n) ? 0 : 1)
 
+/** Штучні одиниці: форма, вазочок, упаковка — лише цілі числа. */
+const PIECES = ['forme', 'vasetti', 'pz']
+
 export default function Uscita() {
   const { state, dispatch } = useStore()
   const [params, setParams] = useSearchParams()
@@ -33,7 +36,8 @@ export default function Uscita() {
 
   const qtyNum = Number(qty.replace(',', '.'))
   const tooMuch = qtyNum > available
-  const ready = Boolean(product) && qtyNum > 0 && !tooMuch && dest !== null
+  const notWhole = Boolean(product && PIECES.includes(product.unit)) && !Number.isInteger(qtyNum)
+  const ready = Boolean(product) && qtyNum > 0 && !tooMuch && !notWhole && dest !== null
 
   const onCode = (text: string) => {
     const t = parseQr(text)
@@ -128,6 +132,7 @@ export default function Uscita() {
             <input id="usc-qty" className="mono" inputMode="decimal" autoComplete="off" value={qty} onChange={(e) => setQty(e.target.value)} />
           </div>
           {tooMuch && <div className="chip bad" role="alert" style={{ whiteSpace: 'normal' }}>Ci sono solo {num(available)} {product.unit}</div>}
+          {notWhole && qty.trim() !== '' && <div className="chip bad" role="alert" style={{ whiteSpace: 'normal' }}>Solo numeri interi per {product.unit}</div>}
           <div className="dest-row" role="group" aria-label="Destinazione">
             {DESTINAZIONI.map((d) => (
               <button key={d} type="button" className="dest-btn" aria-pressed={dest === d} onClick={() => setDest(d)}>

@@ -3,7 +3,7 @@
 // застосовуватиме DataSource (Google Sheets) і AI-агент.
 
 import { createSeed, expiryFor, firstBoxId, lotCode, nextBoxId, withSuffix } from './seed'
-import { DEST_LABEL, fefoBoxesOf } from './selectors'
+import { DEST_LABEL, DESTINAZIONI, fefoBoxesOf } from './selectors'
 import { romeDate, romeDateTime } from './time'
 import type { AppState, Box, Destinazione, Lot, OrderStatus, Pick, Uscita } from './types'
 
@@ -214,7 +214,8 @@ export function reducer(state: AppState, action: Action): AppState {
       }
     }
     case 'uscita': {
-      if (!(action.dest in DEST_LABEL) || !(action.qty > 0)) return state
+      // includes, а не `in`: `in` пропустив би службові ключі на кшталт 'toString'.
+      if (!DESTINAZIONI.includes(action.dest) || !(action.qty > 0)) return state
       const box = action.boxId ? state.boxes.find((b) => b.id === action.boxId) : undefined
       if (action.boxId && !box) return state
       const productId = box ? state.lots.find((l) => l.id === box.lotId)?.productId : action.productId

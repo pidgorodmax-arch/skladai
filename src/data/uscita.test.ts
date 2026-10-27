@@ -46,6 +46,7 @@ describe('uscita — з відсканованої коробки', () => {
     expect(reducer(state, { type: 'uscita', boxId: 'MZ-2-1', qty: 0, dest: 'ordine' })).toBe(state)
     expect(reducer(state, { type: 'uscita', boxId: 'немає', qty: 1, dest: 'ordine' })).toBe(state)
     expect(reducer(state, { type: 'uscita', boxId: 'MZ-2-1', qty: 1, dest: 'regalo' } as unknown as Action)).toBe(state)
+    expect(reducer(state, { type: 'uscita', boxId: 'MZ-2-1', qty: 1, dest: 'toString' } as unknown as Action)).toBe(state)
   })
 
   it('уся коробка — коробка й порожня партія зникають, лот лишається в записі', () => {
@@ -170,6 +171,7 @@ describe('Apps Script: uscita = reducer', () => {
       [{ type: 'uscita', boxId: 'MZ-2-1', qty: 16, dest: 'ordine' }, 'Disponibili solo 15 kg'],
       [{ type: 'uscita', productId: 'mozzarella', qty: 36, dest: 'ordine' }, 'Disponibili solo 35 kg'],
       [{ type: 'uscita', boxId: 'MZ-2-1', qty: 1, dest: 'regalo' }, 'Destinazione non valida: regalo'],
+      [{ type: 'uscita', boxId: 'MZ-2-1', qty: 1, dest: 'toString' }, 'Destinazione non valida: toString'],
       [{ type: 'uscita', boxId: 'nessuno', qty: 1, dest: 'ordine' }, 'Collo sconosciuto: nessuno'],
       [{ type: 'uscita', productId: 'brie', qty: 1, dest: 'ordine' }, 'Prodotto sconosciuto: brie'],
     ]
