@@ -3,7 +3,7 @@
 // Зміни — лише через dispatch: без інтернету вони чекають в офлайн-черзі.
 
 import { useCallback, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { parseQr, type ScanTarget } from '../data/labels'
 import { fmtDate, fmtNum, manualSearch, resolveScan, type BoxLabel } from '../data/selectors'
 import { useStore } from '../data/useStore'
@@ -138,6 +138,11 @@ export default function Scan() {
             <button type="button" className="btn primary" onClick={() => { setMoving(result.label.box.id); setMessage(null) }}>
               Sposta su un altro scaffale
             </button>
+          )}
+          {!moving && (
+            <Link className="btn" to={`/uscita?collo=${encodeURIComponent(result.label.box.id)}`}>
+              Uscita (Ordine / Spaccio / Scarto)
+            </Link>
           )}
         </section>
       )}

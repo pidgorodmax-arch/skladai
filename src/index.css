@@ -152,6 +152,13 @@ footer.app-foot { max-width: 1360px; margin: 0 auto; padding: 8px 24px 32px; dis
 .scan-item.big { min-height: 72px; padding: 12px 14px; font-size: 17px; gap: 4px; }
 .scan-item-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; width: 100%; font-size: 18px; }
 
+/* ---------- uscita rapida і rimanenze (2c) ---------- */
+.dest-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.dest-btn { min-height: 64px; border-radius: 10px; border: 2px solid var(--field); background: var(--card); color: var(--ink); font: inherit; font-size: 17px; font-weight: 700; cursor: pointer; }
+.dest-btn[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.dest-btn:focus-visible { outline: 3px solid #1d4f8a; outline-offset: 2px; }
+.rim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+
 /* ---------- етикетки (2b.3) ---------- */
 .label-picks { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; border-top: 1px solid var(--line-2); }
 .label-pick { display: flex; gap: 12px; align-items: center; min-height: 44px; padding: 4px 0; border-bottom: 1px solid var(--line-2); cursor: pointer; }
