@@ -13,15 +13,24 @@ function qty(l: BoxLabel): string {
   return `${fmtNum(l.box.qty, Number.isInteger(l.box.qty) ? 0 : 1)} ${l.product.unit}`
 }
 
-/** Рядок-кнопка коробки: у списку стелажа й у ручному пошуку. */
+/**
+ * Великий рядок-кнопка коробки (зручно в рукавичках): у списку стелажа й у
+ * ручному пошуку. Зверху — продукт і кількість, нижче — collo i/N і стелаж,
+ * ще нижче — термін і лот (список уже відсортований за FEFO).
+ */
 function BoxButton({ label, onPick }: { label: BoxLabel; onPick: () => void }) {
+  const { lot } = label
   return (
-    <button type="button" className="scan-item" onClick={onPick}>
-      <span>
-        <strong>{label.product.name}</strong> · {qty(label)}
+    <button type="button" className="scan-item big" onClick={onPick}>
+      <span className="scan-item-top">
+        <strong>{label.product.name}</strong>
+        <span className="mono">{qty(label)}</span>
       </span>
-      <span className="muted mono" style={{ fontSize: 13 }}>
-        {label.lot.code} · collo {label.index}/{label.count}{label.location ? ` · ${label.location.name}` : ''}
+      <span>
+        Collo {label.index}/{label.count} · {label.location?.name ?? '—'}
+      </span>
+      <span className="muted mono" style={{ fontSize: 14 }}>
+        {lot.expiresAt ? `scad. ${fmtDate(lot.expiresAt)}` : `prod. ${fmtDate(lot.producedAt)}`} · {lot.code}
       </span>
     </button>
   )
@@ -150,7 +159,7 @@ export default function Scan() {
             id="scan-manual"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="es. 2310-MZ o Scaffale A"
+            placeholder="es. 2310-MZ o A3"
             autoComplete="off"
             enterKeyHint="search"
           />
@@ -158,12 +167,13 @@ export default function Scan() {
         {found.places.map((p) => (
           <button key={p.id} type="button" className="scan-item" onClick={() => onTarget({ kind: 'posizione', id: p.id })}>
             <strong>{p.name}</strong>
+            <span className="muted" style={{ fontSize: 14 }}>{moving ? 'Sposta qui il collo' : 'Apri lo scaffale'}</span>
           </button>
         ))}
         {found.boxes.map((l) => (
           <BoxButton key={l.box.id} label={l} onPick={() => onTarget({ kind: 'collo', id: l.box.id })} />
         ))}
-        {query.trim().length >= 2 && !found.boxes.length && !found.places.length && <div className="muted">Nessun risultato</div>}
+        {query.trim() && !found.boxes.length && !found.places.length && <div className="muted">Nessun risultato</div>}
       </section>
     </main>
   )

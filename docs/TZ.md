@@ -180,7 +180,7 @@ Telegram. Ключі — лише в GitHub Secrets, ніколи у фронт�
 - [x] 2b.1a Вкладка `Colli` у таблиці й Apps Script (`Code.gs` v4; стара таблиця читається, при першому записі скрипт сам створює `Colli`)
 - [x] 2b.2 Дії `placeBox`, `moveBox`, `pick` (`reducer.ts`, Apps Script, вкладка `Prelievi`); «spedito» добирає незібране за FEFO з позначкою `automatico`; `Pick` v5: `lotId`, `method`; прогрес — `orderProgress`
 - [x] 2b.3 Етикетки QR (`#/etichette`, `src/data/labels.ts`): колі й стелажі; A4 3×8 (70×37 мм), термо 62×40 і 100×50 мм. У QR — посилання `<адреса>#/scan?collo=<код>` / `?pos=<id>`; `parseQr` — для сканера 2b.4
-- [x] 2b.4 Сканер (`#/scan`, `QrCamera.tsx`): BarcodeDetector, інакше jsQR по кадрах; ручний резерв — частина коду лоту або стелаж і вибір зі списку (`manualSearch`); коробка → «Sposta» (`moveBox`, офлайн — у черзі). Камера потребує HTTPS (GitHub Pages — так)
+- [x] 2b.4 Сканер (`#/scan`, `QrCamera.tsx`): BarcodeDetector, інакше jsQR по кадрах; ручний резерв — частина коду лоту або назва стелажа («A3») і вибір зі списку великих рядків за FEFO (`manualSearch`); коробка → «Sposta» (`moveBox`, офлайн — у черзі). Камера потребує HTTPS (GitHub Pages — так)
 - [ ] Етап 2b — решта (2b.5–2b.8)
 - [ ] Етап 3
 - [ ] Етап 4
