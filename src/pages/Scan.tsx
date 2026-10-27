@@ -173,6 +173,9 @@ export default function Scan() {
         {found.boxes.map((l) => (
           <BoxButton key={l.box.id} label={l} onPick={() => onTarget({ kind: 'collo', id: l.box.id })} />
         ))}
+        {found.more > 0 && (
+          <div className="muted">Altri {found.more} colli: scrivi di più o apri lo scaffale per vederli tutti.</div>
+        )}
         {query.trim() && !found.boxes.length && !found.places.length && <div className="muted">Nessun risultato</div>}
       </section>
     </main>

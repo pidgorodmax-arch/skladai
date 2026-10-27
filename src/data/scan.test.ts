@@ -78,7 +78,22 @@ describe('manualSearch — ручний резерв', () => {
   })
 
   it('одна літера, що не є id стелажа, — нічого (щоб не показувати весь склад)', () => {
-    expect(manualSearch(makeState(), 'm')).toEqual({ boxes: [], places: [] })
-    expect(manualSearch(makeState(), '  ')).toEqual({ boxes: [], places: [] })
+    expect(manualSearch(makeState(), 'm')).toEqual({ boxes: [], places: [], more: 0 })
+    expect(manualSearch(makeState(), '  ')).toEqual({ boxes: [], places: [], more: 0 })
+  })
+
+  it('скорочений id з початку: «C1» → C1-1 і C1-2', () => {
+    const state = makeState()
+    state.locations.push(
+      { id: 'C1-1', name: 'Ripiano alto', zoneId: 'c1', kind: 'cold', capacity: 50, x: 13, z: 3, w: 4, d: 1, h: 2 },
+      { id: 'C1-2', name: 'Ripiano basso', zoneId: 'c1', kind: 'cold', capacity: 50, x: 13, z: 5, w: 4, d: 1, h: 2 },
+    )
+    expect(manualSearch(state, 'c1').places.map((p) => p.id)).toEqual(['C1-1', 'C1-2'])
+  })
+
+  it('понад ліміт — список обрізано за FEFO, а more каже, скільки ще', () => {
+    const found = manualSearch(withA3(), 'A3', 1)
+    expect(found.boxes.map((b) => b.box.id)).toEqual(['MZ-2-2'])
+    expect(found.more).toBe(1)
   })
 })

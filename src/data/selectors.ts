@@ -247,12 +247,12 @@ function searchKey(text: string): string {
 }
 
 /**
- * Чи підходить стелаж під запит: точний id або назва з початку будь-якого
- * слова («A3», «scaffale a3», «ripiano 1»). З початку слова — щоб «A3» не
- * знаходив «Cella 3» (CELLA3 містить A3 усередині).
+ * Чи підходить стелаж під запит: id з початку («C1» → C1-1, C1-2) або назва з
+ * початку будь-якого слова («A3», «scaffale a3», «ripiano 1»). З початку
+ * слова — щоб «A3» не знаходив «Cella 3» (CELLA3 містить A3 усередині).
  */
 function placeMatches(place: Location, q: string): boolean {
-  if (searchKey(place.id) === q) return true
+  if (searchKey(place.id).startsWith(q)) return true
   const words = place.name.split(/[\s.\-·/]+/).filter(Boolean)
   return words.some((_, i) => searchKey(words.slice(i).join('')).startsWith(q))
 }
@@ -264,13 +264,14 @@ function placeMatches(place: Location, q: string): boolean {
  * (відкрити порожній чи завершити «Sposta» без QR). Коротше 2 символів —
  * лише точний id стелажа.
  */
-export function manualSearch(state: AppState, query: string, limit = 20): { boxes: BoxLabel[]; places: Location[] } {
+export function manualSearch(state: AppState, query: string, limit = 20): { boxes: BoxLabel[]; places: Location[]; more: number } {
   const q = searchKey(query)
-  if (!q) return { boxes: [], places: [] }
+  if (!q) return { boxes: [], places: [], more: 0 }
   const places = state.locations.filter((l) => l.kind !== 'machine' && (q.length >= 2 ? placeMatches(l, q) : searchKey(l.id) === q))
   const placeIds = new Set(places.map((p) => p.id))
   const boxes = boxLabels(state).filter((l) => placeIds.has(l.box.locationId) || (q.length >= 2 && searchKey(l.lot.code).includes(q)))
-  return { boxes: byExpiry(boxes).slice(0, limit), places: places.slice(0, limit) }
+  // more — скільки коробок не влізло в список (тоді краще відкрити сам стелаж).
+  return { boxes: byExpiry(boxes).slice(0, limit), places: places.slice(0, limit), more: Math.max(0, boxes.length - limit) }
 }
 
 /** Скільки зібрано під рядок замовлення (сканером і автоматично). */
