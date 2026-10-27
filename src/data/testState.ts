@@ -14,7 +14,7 @@ export function makeState(): AppState {
     version: STATE_VERSION,
     products: [
       { id: 'montasio', code: 'ART-0007', abbr: 'MO', name: 'Montasio DOP', unit: 'forme', spacePerUnit: 1, shelfLifeDays: null, pricePerUnit: 95, storage: 'aging' },
-      { id: 'mozzarella', code: 'ART-0001', abbr: 'MZ', name: 'Mozzarella', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 7, pricePerUnit: 9.5, storage: 'cold' },
+      { id: 'mozzarella', code: 'ART-0001', abbr: 'MZ', name: 'Mozzarella', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 7, pricePerUnit: 9.5, storage: 'cold', minStock: 50 },
       { id: 'yogurt', code: 'ART-0005', abbr: 'YB', name: 'Yogurt bianco', unit: 'vasetti', spacePerUnit: 0.15, shelfLifeDays: 21, pricePerUnit: 0.9, storage: 'cold' },
     ],
     zones: [
@@ -47,6 +47,7 @@ export function makeState(): AppState {
       { id: 'YB-1-1', lotId: 'YB-1', locationId: 'C', qty: 100 },
     ],
     picks: [],
+    uscite: [],
     orders: [
       { id: 'O1', client: 'Alimentari Rossi', channel: 'WhatsApp', lines: [{ productId: 'mozzarella', qty: 50 }, { productId: 'montasio', qty: 5 }], due: '2026-06-17', status: 'nuovo' },
       { id: 'O2', client: 'Bar Centrale', channel: 'Telefono', lines: [{ productId: 'mozzarella', qty: 10 }], due: '2026-06-16', status: 'in_preparazione' },

@@ -85,6 +85,7 @@ function describe(action: Action): string {
     case 'placeBox': return 'Nuovo collo'
     case 'moveBox': return 'Spostamento del collo'
     case 'pick': return `Prelievo per ordine ${action.orderId}`
+    case 'uscita': return 'Uscita rapida'
     case 'orderStatus': return `Ordine ${action.orderId}`
     default: return 'Operazione'
   }

@@ -5,7 +5,7 @@
 // порахувати склад на будь-яку дату.
 
 import { romeDate } from './time'
-import type { AppState, Box, Location, Lot, Product } from './types'
+import type { AppState, Box, Destinazione, Location, Lot, Product } from './types'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -233,7 +233,12 @@ export function resolveScan(state: AppState, target: { kind: 'collo' | 'posizion
     return label ? { kind: 'collo', label } : null
   }
   const location = state.locations.find((l) => l.id === target.id)
-  return location ? { kind: 'posizione', location, boxes: boxLabels(state).filter((l) => l.box.locationId === location.id) } : null
+  return location ? { kind: 'posizione', location, boxes: byExpiry(boxLabels(state).filter((l) => l.box.locationId === location.id)) } : null
+}
+
+/** FEFO: спершу коробки, що раніше спливають (для витримки — найстаріші); стабільно. */
+function byExpiry(labels: BoxLabel[]): BoxLabel[] {
+  return [...labels].sort((a, b) => (a.lot.expiresAt ?? a.lot.producedAt).localeCompare(b.lot.expiresAt ?? b.lot.producedAt))
 }
 
 /** Для пошуку: великі літери, без пробілів, крапок і дефісів («l 2310 mz» = «L-2310-MZ»). */
@@ -242,18 +247,92 @@ function searchKey(text: string): string {
 }
 
 /**
- * Ручний резерв сканера: частина коду лоту з етикетки («2310MZ») або назва чи
- * id стелажа. Коробки — за лотом, стелажі — за назвою/id. Коротше 2 символів — нічого.
+ * Чи підходить стелаж під запит: id з початку («C1» → C1-1, C1-2) або назва з
+ * початку будь-якого слова («A3», «scaffale a3», «ripiano 1»). З початку
+ * слова — щоб «A3» не знаходив «Cella 3» (CELLA3 містить A3 усередині).
  */
-export function manualSearch(state: AppState, query: string, limit = 20): { boxes: BoxLabel[]; places: Location[] } {
+function placeMatches(place: Location, q: string): boolean {
+  if (searchKey(place.id).startsWith(q)) return true
+  const words = place.name.split(/[\s.\-·/]+/).filter(Boolean)
+  return words.some((_, i) => searchKey(words.slice(i).join('')).startsWith(q))
+}
+
+/**
+ * Ручний резерв сканера. Запит — частина коду лоту з етикетки («2310MZ») або
+ * назва чи id стелажа («A3»). Повертає коробки (за лотом або ті, що стоять на
+ * знайдених стелажах) за FEFO — найближчий термін першим — і самі стелажі
+ * (відкрити порожній чи завершити «Sposta» без QR). Коротше 2 символів —
+ * лише точний id стелажа.
+ */
+export function manualSearch(state: AppState, query: string, limit = 20): { boxes: BoxLabel[]; places: Location[]; more: number } {
   const q = searchKey(query)
-  if (q.length < 2) return { boxes: [], places: [] }
-  return {
-    boxes: boxLabels(state).filter((l) => searchKey(l.lot.code).includes(q)).slice(0, limit),
-    places: state.locations
-      .filter((l) => l.kind !== 'machine' && (searchKey(l.name).includes(q) || searchKey(l.id) === q))
-      .slice(0, limit),
-  }
+  if (!q) return { boxes: [], places: [], more: 0 }
+  const places = state.locations.filter((l) => l.kind !== 'machine' && (q.length >= 2 ? placeMatches(l, q) : searchKey(l.id) === q))
+  const placeIds = new Set(places.map((p) => p.id))
+  const boxes = boxLabels(state).filter((l) => placeIds.has(l.box.locationId) || (q.length >= 2 && searchKey(l.lot.code).includes(q)))
+  // more — скільки коробок не влізло в список (тоді краще відкрити сам стелаж).
+  return { boxes: byExpiry(boxes).slice(0, limit), places: places.slice(0, limit), more: Math.max(0, boxes.length - limit) }
+}
+
+/** Призначення виходу — як їх бачить людина (журнал, екрани). */
+export const DEST_LABEL: Record<Destinazione, string> = { ordine: 'Ordine', spaccio: 'Spaccio', scarto: 'Scarto' }
+export const DESTINAZIONI = Object.keys(DEST_LABEL) as Destinazione[]
+
+/** Коробки продукту за FEFO: спершу партії, що раніше спливають; усередині партії — по порядку. */
+export function fefoBoxesOf(state: AppState, productId: string): Box[] {
+  return state.lots
+    .filter((l) => l.productId === productId)
+    .sort((a, b) => (a.expiresAt ?? a.producedAt).localeCompare(b.expiresAt ?? b.producedAt))
+    .flatMap((l) => state.boxes.filter((b) => b.lotId === l.id))
+}
+
+/**
+ * Підказка FEFO для Uscita rapida: якщо взяли коробку, а є коробка того ж
+ * продукту, що спливає раніше, — повертає її етикетку; інакше null.
+ */
+export function fefoHint(state: AppState, boxId: string): BoxLabel | null {
+  const labels = boxLabels(state)
+  const chosen = labels.find((l) => l.box.id === boxId)
+  if (!chosen) return null
+  const first = fefoBoxesOf(state, chosen.product.id)[0]
+  const firstLabel = first && labels.find((l) => l.box.id === first.id)
+  if (!firstLabel || firstLabel.lot.id === chosen.lot.id) return null
+  const when = (l: BoxLabel) => l.lot.expiresAt ?? l.lot.producedAt
+  return when(firstLabel) < when(chosen) ? firstLabel : null
+}
+
+export type PerDest = Record<Destinazione, number>
+
+export interface Rimanenza {
+  product: Product
+  stock: number
+  minStock: number | null
+  /** Залишок нижче scorta minima. */
+  below: boolean
+  oggi: PerDest
+  /** Останні 7 днів разом із сьогоднішнім. */
+  settimana: PerDest
+}
+
+/** Залишок кожного продукту і скільки вийшло сьогодні / за 7 днів по призначеннях. */
+export function rimanenze(state: AppState, today: Date): Rimanenza[] {
+  const stock = stockByProduct(state)
+  const day = isoDate(today)
+  const weekStart = isoDate(new Date(today.getTime() - 6 * DAY))
+  const empty = (): PerDest => ({ ordine: 0, spaccio: 0, scarto: 0 })
+  return state.products.map((product) => {
+    const oggi = empty()
+    const settimana = empty()
+    for (const u of state.uscite) {
+      if (u.productId !== product.id) continue
+      const d = u.at.slice(0, 10)
+      if (d === day) oggi[u.dest] += u.qty
+      if (d >= weekStart && d <= day) settimana[u.dest] += u.qty
+    }
+    const qty = stock[product.id] ?? 0
+    const minStock = product.minStock ?? null
+    return { product, stock: qty, minStock, below: minStock != null && qty < minStock, oggi, settimana }
+  })
 }
 
 /** Скільки зібрано під рядок замовлення (сканером і автоматично). */

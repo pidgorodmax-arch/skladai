@@ -42,6 +42,7 @@ Zone ──< Posizioni ──< Colli >── Lotti >── Prodotti
                                              │
 Ordini (рядок = позиція замовлення) ─────────┘ через колонку prodotto
 
+Uscite — що вийшло з якої коробки: Ordine / Spaccio / Scarto (collo, lotto, prodotto)
 Prelievi — що з якої коробки взяли під яке замовлення (collo, lotto, ordine)
 Registro — окремий журнал, ні на що не посилається
 ```
@@ -67,13 +68,14 @@ Registro — окремий журнал, ні на що не посилаєть
 | `prezzo` | так | Ціна продажу за одиницю, € | `pricePerUnit` |
 | `resa_per_litro` | ні | Вихід з 1 л молока як частка: 9,8% → `0,098` | `yieldPerLitre` |
 | `conservazione` | так | `aging` (витримка) або `cold` (холодильна камера) | `storage` |
+| `scorta_minima` | ні | Scorta minima в одиницях продукту: коли залишок нижче, застосунок попереджає (Rimanenze, брифінг). Порожньо — без попередження | `minStock` |
 
 Приклад:
 
-| id | codice | sigla | nome | unita | spazio_per_unita | giorni_scadenza | prezzo | resa_per_litro | conservazione |
-|---|---|---|---|---|---|---|---|---|---|
-| mozzarella | ART-0001 | MZ | Mozzarella | kg | 1 | 7 | 9,5 | 0,098 | cold |
-| montasio | ART-0007 | MO | Montasio DOP | forme | 1 | | 95 | | aging |
+| id | codice | sigla | nome | unita | spazio_per_unita | giorni_scadenza | prezzo | resa_per_litro | conservazione | scorta_minima |
+|---|---|---|---|---|---|---|---|---|---|---|
+| mozzarella | ART-0001 | MZ | Mozzarella | kg | 1 | 7 | 9,5 | 0,098 | cold | 120 |
+| montasio | ART-0007 | MO | Montasio DOP | forme | 1 | | 95 | | aging | |
 
 Вигадані артикули демо-версії (сигли можна змінити в таблиці):
 
@@ -210,6 +212,32 @@ Registro — окремий журнал, ні на що не посилаєть
 перенесе туди кількість і місце кожної партії, очистить ці дві колонки в
 `Lotti` і запише це в `Registro`. Вручну нічого переносити не треба.
 
+## Вкладка `Uscite` — вихід товару (Uscita rapida)
+
+Що вийшло зі складу без замовлення в SkladAI (замовлення ведуть у Mexal):
+одне взяття з однієї коробки = один рядок. Відповідає `Uscita`. Застосунок
+**лише дописує** рядки; разом із `Lotti` це простежуваність HACCP: який лот
+куди пішов. Вкладку можна не створювати — скрипт створить її під час
+першого виходу.
+
+| Колонка | Обов'язкова | Що писати | Поле в коді |
+|---|---|---|---|
+| `collo` | так | Код коробки, з якої взяли (коробки вже може не бути — порожня зникає) | `boxId` |
+| `lotto` | так | `id` партії цієї коробки | `lotId` |
+| `prodotto` | так | `id` продукту | `productId` |
+| `quantita` | так | Скільки вийшло, в одиницях продукту | `qty` |
+| `destinazione` | так | `ordine` (замовлення з Mexal), `spaccio` (власний магазин) або `scarto` (брак) | `dest` |
+| `data_ora` | так | Коли, `РРРР-ММ-ДДTгг:хх` за часом Італії | `at` |
+
+Приклад (10 кг у spaccio з однієї коробки; 30 кг під замовлення —
+система взяла за FEFO з двох коробок):
+
+| collo | lotto | prodotto | quantita | destinazione | data_ora |
+|---|---|---|---|---|---|
+| L-2310-MZ-2 | L-2310-MZ | mozzarella | 10 | spaccio | 2026-10-27T08:10 |
+| L-2110-MZ-1 | L-2110-MZ | mozzarella | 24 | ordine | 2026-10-27T09:30 |
+| L-2310-MZ-1 | L-2310-MZ | mozzarella | 6 | ordine | 2026-10-27T09:30 |
+
 ## Вкладка `Prelievi` — збирання замовлень
 
 Хто що взяв під замовлення: одне взяття з однієї коробки = один рядок.
@@ -301,15 +329,16 @@ AI-брифінгу. Відповідає `AppState.log`. Застосунок *
 1. Google Drive → **Nuovo → Fogli Google**. Назва, наприклад,
    `SkladAI – Latteria Rossi`.
 2. Перейменуй перший аркуш на `Prodotti` (подвійний клік на назві внизу) і
-   додай ще сім: `Zone`, `Posizioni`, `Lotti`, `Colli`, `Prelievi`, `Ordini`,
-   `Registro` (`Prelievi` можна пропустити — скрипт створить її сам).
+   додай ще вісім: `Zone`, `Posizioni`, `Lotti`, `Colli`, `Uscite`, `Prelievi`,
+   `Ordini`, `Registro` (`Uscite` і `Prelievi` можна пропустити — скрипт
+   створить їх сам).
 3. У кожну вкладку в **перший рядок** впиши назви колонок з таблиць вище.
    Зручно: **Visualizza → Blocca → 1 riga**, щоб заголовок не зникав при
    прокручуванні.
 4. Колонки з датами (`Lotti.data_produzione`, `Lotti.scadenza`,
    `Ordini.consegna`, `Registro.data_ora`) і колонки з кодами (`id`, `codice`,
    `zona`, `prodotto`, `posizione`, `lotto`, `collo`, `ordine`) → **Formato → Numero → Testo normale**.
-   Те саме для `Prelievi.data_ora`.
+   Те саме для `Uscite.data_ora` і `Prelievi.data_ora`.
    Інакше Таблиця може «вгадати» дату в коді на кшталт `1-2`.
 5. Заповни `Prodotti`, `Zone` і `Posizioni` (це «довідники» — міняються
    рідко). `Lotti` + `Colli` і `Ordini` можна заповнити поточними

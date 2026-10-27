@@ -5,6 +5,7 @@ import { useStore } from './data/useStore'
 import Dashboard from './pages/Dashboard'
 import Orders from './pages/Orders'
 import Register from './pages/Register'
+import Rimanenze from './pages/Rimanenze'
 import Settings from './pages/Settings'
 
 // 3D-сцена важка (Three.js) — вантажимо її лише коли відкривають карту.
@@ -13,6 +14,7 @@ const Warehouse3D = lazy(() => import('./pages/Warehouse3D'))
 const Labels = lazy(() => import('./pages/Labels'))
 // Сканер тягне розпізнавач QR (jsQR) — так само окремо.
 const Scan = lazy(() => import('./pages/Scan'))
+const Uscita = lazy(() => import('./pages/Uscita'))
 
 function Logo() {
   return (
@@ -39,6 +41,8 @@ export default function App() {
           </NavLink>
           <nav className="nav" aria-label="Sezioni">
             <NavLink to="/" end className={link}>Cruscotto</NavLink>
+            <NavLink to="/rimanenze" className={link}>Rimanenze</NavLink>
+            <NavLink to="/uscita" className={link}>Uscita</NavLink>
             <NavLink to="/magazzino" className={link}>Magazzino 3D</NavLink>
             <NavLink to="/ordini" className={link}>Ordini</NavLink>
             <NavLink to="/registra" className={link}>Registra</NavLink>
@@ -55,6 +59,8 @@ export default function App() {
           <Route path="/ordini" element={<Orders />} />
           <Route path="/registra" element={<Register />} />
           <Route path="/scan" element={<Scan />} />
+          <Route path="/uscita" element={<Uscita />} />
+          <Route path="/rimanenze" element={<Rimanenze />} />
           <Route path="/etichette" element={<Labels />} />
           <Route path="/impostazioni" element={<Settings />} />
           <Route path="*" element={<Dashboard />} />

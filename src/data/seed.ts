@@ -3,7 +3,7 @@
 // Усе тут вигадане: коди ART-000N, ціни, клієнти (репозиторій публічний).
 
 import { startOfDay } from './selectors'
-import { STATE_VERSION, type AppState, type Box, type Lot, type Product, type Unit } from './types'
+import { STATE_VERSION, type AppState, type Box, type Destinazione, type Lot, type Product, type Unit, type Uscita } from './types'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -14,13 +14,13 @@ export function isoDay(offsetDays: number, from = startOfDay(new Date())): strin
 }
 
 const products: Product[] = [
-  { id: 'montasio', code: 'ART-0007', abbr: 'MO', name: 'Montasio DOP', unit: 'forme', spacePerUnit: 1, shelfLifeDays: null, pricePerUnit: 95, storage: 'aging' },
-  { id: 'mozzarella', code: 'ART-0001', abbr: 'MZ', name: 'Mozzarella', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 7, pricePerUnit: 9.5, yieldPerLitre: 0.098, storage: 'cold' },
-  { id: 'ricotta', code: 'ART-0003', abbr: 'RI', name: 'Ricotta', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 5, pricePerUnit: 7, storage: 'cold' },
-  { id: 'yogurt', code: 'ART-0005', abbr: 'YB', name: 'Yogurt bianco', unit: 'vasetti', spacePerUnit: 0.15, shelfLifeDays: 21, pricePerUnit: 0.9, storage: 'cold' },
-  { id: 'kefir', code: 'ART-0006', abbr: 'KF', name: 'Kefir', unit: 'L', spacePerUnit: 1, shelfLifeDays: 14, pricePerUnit: 3.2, storage: 'cold' },
-  { id: 'burro', code: 'ART-0004', abbr: 'BU', name: 'Burro', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 40, pricePerUnit: 11, storage: 'cold' },
-  { id: 'latte', code: 'ART-0002', abbr: 'LT', name: 'Latte fresco', unit: 'L', spacePerUnit: 1, shelfLifeDays: 4, pricePerUnit: 1.6, storage: 'cold' },
+  { id: 'montasio', code: 'ART-0007', abbr: 'MO', name: 'Montasio DOP', unit: 'forme', spacePerUnit: 1, shelfLifeDays: null, pricePerUnit: 95, storage: 'aging', minStock: 100 },
+  { id: 'mozzarella', code: 'ART-0001', abbr: 'MZ', name: 'Mozzarella', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 7, pricePerUnit: 9.5, yieldPerLitre: 0.098, storage: 'cold', minStock: 120 },
+  { id: 'ricotta', code: 'ART-0003', abbr: 'RI', name: 'Ricotta', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 5, pricePerUnit: 7, storage: 'cold', minStock: 15 },
+  { id: 'yogurt', code: 'ART-0005', abbr: 'YB', name: 'Yogurt bianco', unit: 'vasetti', spacePerUnit: 0.15, shelfLifeDays: 21, pricePerUnit: 0.9, storage: 'cold', minStock: 300 },
+  { id: 'kefir', code: 'ART-0006', abbr: 'KF', name: 'Kefir', unit: 'L', spacePerUnit: 1, shelfLifeDays: 14, pricePerUnit: 3.2, storage: 'cold', minStock: 40 },
+  { id: 'burro', code: 'ART-0004', abbr: 'BU', name: 'Burro', unit: 'kg', spacePerUnit: 1, shelfLifeDays: 40, pricePerUnit: 11, storage: 'cold', minStock: 30 },
+  { id: 'latte', code: 'ART-0002', abbr: 'LT', name: 'Latte fresco', unit: 'L', spacePerUnit: 1, shelfLifeDays: 4, pricePerUnit: 1.6, storage: 'cold', minStock: 150 },
 ]
 
 /** `base`, а якщо він уже зайнятий — `base2`, `base3`, … */
@@ -115,6 +115,21 @@ export function createSeed(): AppState {
   add('ricotta', 12, 'C2-2', 2)
   add('ricotta', 8, 'C2-2', 2)
 
+  // Кілька виходів «Uscita rapida» за останні дні — щоб Rimanenze не була порожньою.
+  // Товар уже вийшов, тож коробок цих записів на складі немає.
+  const uscita = (productId: string, qty: number, dest: Destinazione, daysAgo: number, time: string): Uscita => {
+    const lot = lots.find((l) => l.productId === productId)!
+    return { boxId: `${lot.id}-9`, lotId: lot.id, productId, qty, dest, at: `${isoDay(-daysAgo)}T${time}` }
+  }
+  const uscite: Uscita[] = [
+    uscita('latte', 40, 'ordine', 10, '07:30'),
+    uscita('mozzarella', 20, 'ordine', 3, '08:10'),
+    uscita('burro', 6, 'spaccio', 3, '09:00'),
+    uscita('yogurt', 48, 'spaccio', 1, '08:40'),
+    uscita('mozzarella', 10, 'ordine', 0, '07:50'),
+    uscita('ricotta', 3, 'scarto', 0, '08:20'),
+  ]
+
   return {
     version: STATE_VERSION,
     products,
@@ -144,6 +159,7 @@ export function createSeed(): AppState {
     lots,
     boxes,
     picks: [],
+    uscite,
     orders: [
       { id: 'ORD-1042', client: 'Alimentari Rossi', channel: 'WhatsApp', lines: [{ productId: 'mozzarella', qty: 40 }, { productId: 'ricotta', qty: 15 }], due: isoDay(2), status: 'in_preparazione' },
       { id: 'ORD-1043', client: 'Agriturismo Il Colle', channel: 'Telefono', lines: [{ productId: 'montasio', qty: 6 }], due: isoDay(2), status: 'in_preparazione' },

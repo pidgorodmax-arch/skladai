@@ -10,6 +10,7 @@ import {
   occupancy,
   productMap,
   productionPlan,
+  rimanenze,
 } from './selectors'
 import type { AppState } from './types'
 
@@ -29,6 +30,16 @@ export function morningBrief(state: AppState, today: Date): BriefItem[] {
     out.push({
       level: daysUntil(row.firstDue ?? '9999-12-31', today) <= 2 ? 'alert' : 'warn',
       text: `${row.product.name}: ordinati ${fmtNum(row.ordered)} ${row.product.unit}, in magazzino ${fmtNum(row.stock)}. Da produrre ${fmtNum(row.todo)} ${row.product.unit}${when}.`,
+    })
+  }
+
+  // Scorta minima (2c.3): залишок нижче мінімуму, заданого в Prodotti.
+  for (const r of rimanenze(state, today)) {
+    if (!r.below) continue
+    const u = r.product.unit
+    out.push({
+      level: 'warn',
+      text: `${r.product.name}: in magazzino ${fmtNum(r.stock)} ${u}, sotto la scorta minima di ${fmtNum(r.minStock ?? 0)} ${u}.`,
     })
   }
 

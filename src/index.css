@@ -148,6 +148,16 @@ footer.app-foot { max-width: 1360px; margin: 0 auto; padding: 8px 24px 32px; dis
 .scan-camera-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center; color: #fff; }
 .scan-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 56px; padding: 8px 12px; text-align: left; border: 1px solid var(--field); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; cursor: pointer; }
 .scan-item:focus-visible { outline: 3px solid #1d4f8a; outline-offset: 2px; }
+/* Великий рядок коробки — для пальця в рукавичці. */
+.scan-item.big { min-height: 72px; padding: 12px 14px; font-size: 17px; gap: 4px; }
+.scan-item-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; width: 100%; font-size: 18px; }
+
+/* ---------- uscita rapida і rimanenze (2c) ---------- */
+.dest-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.dest-btn { min-height: 64px; border-radius: 10px; border: 2px solid var(--field); background: var(--card); color: var(--ink); font: inherit; font-size: 17px; font-weight: 700; cursor: pointer; }
+.dest-btn[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.dest-btn:focus-visible { outline: 3px solid #1d4f8a; outline-offset: 2px; }
+.rim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
 
 /* ---------- етикетки (2b.3) ---------- */
 .label-picks { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; border-top: 1px solid var(--line-2); }
